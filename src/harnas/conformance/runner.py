@@ -88,6 +88,14 @@ def _run_agent(
             session.log.append(type="revert", payload={"revokes": input_item["revert"]})
             continue
 
+        if isinstance(input_item, dict) and "fork" in input_item:
+            at_seq = input_item["fork"]["at_seq"]
+            parent = session
+            forked = parent.fork(at_seq=at_seq)
+            _verify_fork(parent, forked, at_seq)
+            session = forked
+            continue
+
         text = input_item["user"] if isinstance(input_item, dict) else input_item
         session.log.append(type="user_message", payload={"text": text})
         AgentLoop(
@@ -101,6 +109,17 @@ def _run_agent(
         ).run()
 
     return _serialize_log(session.log)
+
+
+def _verify_fork(parent: Session, forked: Session, at_seq: int) -> None:
+    expected_prefix = _serialize_log(list(parent.log)[: at_seq + 1])
+    actual_prefix = _serialize_log(forked.log)
+    if actual_prefix != expected_prefix:
+        raise RuntimeError("fork prefix mismatch")
+    if forked.metadata.get("forked_from") != parent.id:
+        raise RuntimeError("forked_from mismatch")
+    if forked.metadata.get("forked_at_seq") != at_seq:
+        raise RuntimeError("forked_at_seq mismatch")
 
 
 def _load_provider_script(fixture_dir: str) -> tuple[list, bool]:
