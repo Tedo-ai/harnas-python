@@ -1,7 +1,7 @@
 # harnas-python
 
 Python implementation of [Harnas](https://github.com/Tedo-ai/harnas) —
-a specification for LLM agent harnesses. Passes 5/5 conformance
+a specification for LLM agent harnesses. Passes 7/7 conformance
 fixtures byte-identically with the
 [Ruby reference](https://github.com/Tedo-ai/harnas-ruby).
 
@@ -9,8 +9,8 @@ fixtures byte-identically with the
 
 ## Scope
 
-This is a **conformance-first stub**: ~750 lines of Python, standard
-library only, aimed at the conformance fixtures. It demonstrates that
+This is a **conformance-first stub**: standard library only, aimed at
+the conformance fixtures. It demonstrates that
 the Harnas specification is genuinely portable — same Log, same wire
 shapes, byte-identical fixture output.
 
@@ -77,7 +77,8 @@ The Ruby reference exists to define the spec by example; the Python
 port exists to falsify the claim that the spec is Ruby-coupled. Two
 implementations is the minimum for the word "portable" to mean
 something. Two ports surface the language idioms the spec accidentally
-absorbed; we found two on the way to 5/5 conformance:
+absorbed; we found two on the way to the initial buffered 5/5
+conformance:
 
 - The strategy `install` contract is class-level only (Ruby allows
   same-named class+instance methods; Python does not). Spec §05

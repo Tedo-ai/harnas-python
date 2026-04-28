@@ -20,6 +20,7 @@ from ..tools.registry import Registry
 from ..tools.runner import Runner
 from ..tools.tool import Tool
 from .scripted_provider import ScriptedProvider
+from .scripted_stream_provider import ScriptedStreamProvider
 
 STRATEGY_CLASSES = {
     "Compaction::MarkerTail": ("..strategies.compaction.marker_tail", "MarkerTail"),
@@ -42,11 +43,11 @@ class Result:
 
 def run(fixture_dir: str) -> Result:
     manifest = json.loads(_read(os.path.join(fixture_dir, "manifest.json")))
-    responses = json.loads(_read(os.path.join(fixture_dir, "provider-script.json")))
+    script, streaming = _load_provider_script(fixture_dir)
     inputs = json.loads(_read(os.path.join(fixture_dir, "inputs.json")))
     expected = _load_expected(os.path.join(fixture_dir, "expected-log.jsonl"))
 
-    actual = _run_agent(manifest, responses, inputs)
+    actual = _run_agent(manifest, script, inputs, streaming=streaming)
     diff = _first_mismatch(actual, expected)
     return Result(
         fixture=os.path.basename(fixture_dir.rstrip("/")),
@@ -59,11 +60,12 @@ def run(fixture_dir: str) -> Result:
 
 def _run_agent(
     manifest: dict[str, Any],
-    responses: list[dict[str, Any]],
+    script: list,
     inputs: list[str],
+    streaming: bool = False,
 ) -> list[dict[str, Any]]:
     registry = _build_registry(manifest.get("tools", []))
-    projection, provider, ingestor = _build_pipeline(manifest, responses, registry)
+    projection, provider, ingestor = _build_pipeline(manifest, script, registry, streaming)
     runner = Runner(registry) if registry.size > 0 else None
     session = Session.create(metadata={"manifest_name": manifest["name"]})
 
@@ -77,11 +79,19 @@ def _run_agent(
                 projection=projection,
                 provider=provider,
                 ingestor=ingestor,
+                stream_provider=provider if streaming else None,
                 runner=runner,
                 max_turns=3,
             ).run()
 
     return _serialize_log(session.log)
+
+
+def _load_provider_script(fixture_dir: str) -> tuple[list, bool]:
+    stream_path = os.path.join(fixture_dir, "provider-script-stream.json")
+    if os.path.exists(stream_path):
+        return json.loads(_read(stream_path)), True
+    return json.loads(_read(os.path.join(fixture_dir, "provider-script.json"))), False
 
 
 def _install_strategies(strategies_spec: list[dict[str, Any]]) -> None:
@@ -99,8 +109,9 @@ def _install_strategies(strategies_spec: list[dict[str, Any]]) -> None:
 
 def _build_pipeline(
     manifest: dict[str, Any],
-    responses: list[dict[str, Any]],
+    script: list,
     registry: Registry,
+    streaming: bool = False,
 ):
     """Map manifest provider.kind -> projection + ingestor classes."""
     kind = manifest["provider"]["kind"]
@@ -128,7 +139,7 @@ def _build_pipeline(
     else:
         raise NotImplementedError(f"provider kind '{kind}' not yet implemented in the Python port")
 
-    provider = ScriptedProvider(responses)
+    provider = ScriptedStreamProvider(script) if streaming else ScriptedProvider(script)
     return projection, provider, ingestor
 
 
