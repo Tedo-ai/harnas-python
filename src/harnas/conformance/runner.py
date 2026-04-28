@@ -72,7 +72,23 @@ def _run_agent(
 
     _install_strategies(session, manifest.get("strategies", []))
 
-    for text in inputs:
+    for input_item in inputs:
+        if isinstance(input_item, dict) and "compact" in input_item:
+            compact = input_item["compact"]
+            session.log.append(
+                type="compact",
+                payload={
+                    "replaces": compact["replaces"],
+                    "summary": compact["summary"],
+                },
+            )
+            continue
+
+        if isinstance(input_item, dict) and "revert" in input_item:
+            session.log.append(type="revert", payload={"revokes": input_item["revert"]})
+            continue
+
+        text = input_item["user"] if isinstance(input_item, dict) else input_item
         session.log.append(type="user_message", payload={"text": text})
         AgentLoop(
             session=session,

@@ -13,10 +13,12 @@ the specification as a whole.
 
 #### Changed
 
-- Conformance now passes 18/18 fixtures, including provider retry/fatal
+- Conformance now passes 19/19 fixtures, including provider retry/fatal
   errors, tool failure, permission denial, streaming tool failure,
-  strategy composition, system prompts, and large/unicode tool
+  strategy composition, revert chains, system prompts, and large/unicode tool
   arguments.
+- Conformance inputs can now append explicit `compact` and `revert`
+  Mutation Events for mutation-chain fixtures.
 - Added the conformance-facing `Compaction::ToolOutputCap` strategy.
 - Buffered conformance scripts can now assert the projected provider
   request before returning a response.
