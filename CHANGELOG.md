@@ -21,6 +21,9 @@ the specification as a whole.
   `bin/conformance_roundtrip.py` for Session JSONL cross-language
   round-trip conformance. The Python implementation now participates
   in the Ruby/Python/Go 3x3 persistence matrix.
+- Added property-style unittest coverage for mutation idempotence,
+  projection purity, dense seq assignment, fork prefixes, and
+  compact/revert composition.
 - Conformance inputs can now fork the active Session and verify fork
   prefix/metadata before continuing.
 - Conformance inputs can now append explicit `compact` and `revert`
