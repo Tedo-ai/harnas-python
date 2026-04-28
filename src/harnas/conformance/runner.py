@@ -23,6 +23,7 @@ from .scripted_stream_provider import ScriptedStreamProvider
 
 STRATEGY_CLASSES = {
     "Compaction::MarkerTail": ("..strategies.compaction.marker_tail", "MarkerTail"),
+    "Permission::DenyByName": ("..strategies.permission.deny_by_name", "DenyByName"),
 }
 
 
@@ -156,10 +157,14 @@ def _build_registry(tools_spec: list[dict[str, Any]]) -> Registry:
 
 def _conformance_stub_handler(handler_name: str):
     """Returns a callable producing the normative conformance-stub
-    output (spec/conformance/README.md): compact JSON for the args.
+    output (spec/conformance/README.md): canonical compact JSON for
+    the args.
     """
     def stub(args: dict[str, Any]) -> str:
-        return f"[conformance stub: {handler_name}({json.dumps(args, separators=(',', ':'))})]"
+        if handler_name == "conformance.raise_error":
+            raise RuntimeError("conformance tool error")
+        encoded = json.dumps(args, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
+        return f"[conformance stub: {handler_name}({encoded})]"
     return stub
 
 

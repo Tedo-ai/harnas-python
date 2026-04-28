@@ -13,6 +13,11 @@ the specification as a whole.
 
 #### Changed
 
+- Conformance now passes 13/13 fixtures, including provider retry/fatal
+  errors, tool failure, permission denial, streaming tool failure, and
+  large/unicode tool arguments.
+- Added deterministic provider-error handling for scripted providers
+  and the `Permission::DenyByName` strategy used by conformance.
 - Added a small `Agent` façade with `chat`, `stream`, and
   `from_session` methods for parity with the Ruby reference's
   conformance-facing surface.

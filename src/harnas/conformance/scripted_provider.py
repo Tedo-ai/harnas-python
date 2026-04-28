@@ -14,6 +14,13 @@ class Exhausted(Exception):
     """Raised when the script has no more responses to deliver."""
 
 
+class ProviderHTTPError(Exception):
+    def __init__(self, status: int, body: Any) -> None:
+        self.status = status
+        self.body = body
+        super().__init__(f"HTTP {status}: {body}")
+
+
 class ScriptedProvider:
     def __init__(self, responses: list[dict[str, Any]]) -> None:
         self._responses = list(responses)
@@ -23,4 +30,8 @@ class ScriptedProvider:
         if not self._responses:
             raise Exhausted("no more scripted responses")
         self.call_count += 1
-        return self._responses.pop(0)
+        response = self._responses.pop(0)
+        if "error" in response:
+            error = response["error"]
+            raise ProviderHTTPError(error["status"], error["body"])
+        return response
