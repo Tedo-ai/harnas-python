@@ -65,10 +65,20 @@ def _run_agent(
     inputs: list[str],
     streaming: bool = False,
 ) -> list[dict[str, Any]]:
+    return _serialize_log(run_session(manifest, script, inputs, streaming=streaming).log)
+
+
+def run_session(
+    manifest: dict[str, Any],
+    script: list,
+    inputs: list[str],
+    streaming: bool = False,
+    session: Session | None = None,
+) -> Session:
     registry = _build_registry(manifest.get("tools", []))
     projection, provider, ingestor = _build_pipeline(manifest, script, registry, streaming)
     runner = Runner(registry) if registry.size > 0 else None
-    session = Session.create(metadata={"manifest_name": manifest["name"]})
+    session = session or Session.create(metadata={"manifest_name": manifest["name"]})
 
     _install_strategies(session, manifest.get("strategies", []))
 
@@ -108,7 +118,7 @@ def _run_agent(
             max_turns=3,
         ).run()
 
-    return _serialize_log(session.log)
+    return session
 
 
 def _verify_fork(parent: Session, forked: Session, at_seq: int) -> None:

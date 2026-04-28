@@ -17,6 +17,10 @@ the specification as a whole.
   errors, tool failure, permission denial, streaming tool failure,
   strategy composition, revert chains, Session fork/continue, system
   prompts, and large/unicode tool arguments.
+- Added `Session.save` / `Session.load` and
+  `bin/conformance_roundtrip.py` for Session JSONL cross-language
+  round-trip conformance. The Python implementation now participates
+  in the Ruby/Python/Go 3x3 persistence matrix.
 - Conformance inputs can now fork the active Session and verify fork
   prefix/metadata before continuing.
 - Conformance inputs can now append explicit `compact` and `revert`
