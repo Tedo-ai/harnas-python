@@ -9,6 +9,8 @@ the specification as a whole.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-04-29
+
 ### Reference implementation (Python)
 
 #### Changed
@@ -72,5 +74,6 @@ initial buffered conformance fixtures byte-identically with the Ruby
 reference, while intentionally remaining a conformance-first,
 standard-library-only port rather than a full peer implementation.
 
+[0.4.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.4.0
 [0.2.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.1.0

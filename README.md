@@ -5,7 +5,7 @@ a specification for LLM agent harnesses. Passes 20/20 conformance
 fixtures byte-identically with the
 [Ruby reference](https://github.com/Tedo-ai/harnas-ruby).
 
-**Version 0.2.0** (2026-04-28). Tracks Harnas spec 0.2.0.
+**Version 0.4.0** (2026-04-29). Tracks Harnas spec 0.4.0.
 
 ## Scope
 
@@ -22,8 +22,6 @@ It is **not** at feature parity with the Ruby reference yet. Missing:
 - Permission strategies beyond DenyByName (AlwaysAllow, HumanApproval)
 - Tool middleware (Timed, Logged, Retried, RateLimiter, StaleReadGuard)
 - Built-in tools (read_file / write_file / grep / glob / shell / fetch)
-- Agent façade
-- Log/Session JSONL persistence
 - Live-provider RetryPolicy controls beyond the conformance default
 
 Closing those is incremental work that follows the Ruby reference's
