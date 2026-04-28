@@ -5,7 +5,7 @@ a specification for LLM agent harnesses. Passes 7/7 conformance
 fixtures byte-identically with the
 [Ruby reference](https://github.com/Tedo-ai/harnas-ruby).
 
-**Version 0.1.0** (2026-04-28). Tracks Harnas spec 0.1.0.
+**Version 0.2.0** (2026-04-28). Tracks Harnas spec 0.2.0.
 
 ## Scope
 
@@ -88,6 +88,10 @@ conformance:
   normative). Spec `conformance/README.md` was updated.
 
 Both findings are in the Harnas 0.1.0 spec.
+
+## Changelog
+
+See [`CHANGELOG.md`](CHANGELOG.md).
 
 ## License
 
