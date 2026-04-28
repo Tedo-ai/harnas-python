@@ -13,9 +13,11 @@ the specification as a whole.
 
 #### Changed
 
-- Conformance now passes 14/14 fixtures, including provider retry/fatal
-  errors, tool failure, permission denial, streaming tool failure, and
-  large/unicode tool arguments.
+- Conformance now passes 17/17 fixtures, including provider retry/fatal
+  errors, tool failure, permission denial, streaming tool failure,
+  system prompts, and large/unicode tool arguments.
+- Buffered conformance scripts can now assert the projected provider
+  request before returning a response.
 - Added deterministic provider-error handling for scripted providers
   and the `Permission::DenyByName` strategy used by conformance.
 - Scripted streaming fixtures can now model mid-stream provider
