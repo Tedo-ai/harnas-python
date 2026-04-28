@@ -23,6 +23,7 @@ from .scripted_stream_provider import ScriptedStreamProvider
 
 STRATEGY_CLASSES = {
     "Compaction::MarkerTail": ("..strategies.compaction.marker_tail", "MarkerTail"),
+    "Compaction::ToolOutputCap": ("..strategies.compaction.tool_output_cap", "ToolOutputCap"),
     "Permission::DenyByName": ("..strategies.permission.deny_by_name", "DenyByName"),
 }
 

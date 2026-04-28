@@ -13,9 +13,11 @@ the specification as a whole.
 
 #### Changed
 
-- Conformance now passes 17/17 fixtures, including provider retry/fatal
+- Conformance now passes 18/18 fixtures, including provider retry/fatal
   errors, tool failure, permission denial, streaming tool failure,
-  system prompts, and large/unicode tool arguments.
+  strategy composition, system prompts, and large/unicode tool
+  arguments.
+- Added the conformance-facing `Compaction::ToolOutputCap` strategy.
 - Buffered conformance scripts can now assert the projected provider
   request before returning a response.
 - Added deterministic provider-error handling for scripted providers

@@ -1,7 +1,7 @@
 # harnas-python
 
 Python implementation of [Harnas](https://github.com/Tedo-ai/harnas) —
-a specification for LLM agent harnesses. Passes 17/17 conformance
+a specification for LLM agent harnesses. Passes 18/18 conformance
 fixtures byte-identically with the
 [Ruby reference](https://github.com/Tedo-ai/harnas-ruby).
 
@@ -17,8 +17,8 @@ shapes, byte-identical fixture output.
 It is **not** at feature parity with the Ruby reference yet. Missing:
 
 - Live HTTP providers (Anthropic / OpenAI / Gemini, buffered + streaming)
-- Compaction strategies beyond MarkerTail (TokenMarkerTail, SummaryTail,
-  ToolOutputCap)
+- Compaction strategies beyond MarkerTail and ToolOutputCap
+  (TokenMarkerTail, SummaryTail)
 - Permission strategies beyond DenyByName (AlwaysAllow, HumanApproval)
 - Tool middleware (Timed, Logged, Retried, RateLimiter, StaleReadGuard)
 - Built-in tools (read_file / write_file / grep / glob / shell / fetch)
