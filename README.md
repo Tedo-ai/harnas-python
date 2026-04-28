@@ -58,6 +58,14 @@ the conformance runner use `session.install(...)`, and `AgentLoop`
 invokes `session.hooks`, so concurrent Sessions in one process do not
 share strategy handlers by accident.
 
+The Python port also exposes the small façade surface needed by the
+fixtures and replay tools:
+
+- `Agent.chat(text)` for buffered turns
+- `Agent.stream(text, on_delta)` for deterministic streaming turns
+- `Agent.from_session(session)` for continuing from a forked Session
+- `Session.fork(at_seq=N)` for rewind-and-retry style Log branches
+
 ## Run conformance
 
 ```sh

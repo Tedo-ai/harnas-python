@@ -13,6 +13,13 @@ the specification as a whole.
 
 #### Changed
 
+- Added a small `Agent` façade with `chat`, `stream`, and
+  `from_session` methods for parity with the Ruby reference's
+  conformance-facing surface.
+- `Session.fork(at_seq=N)` creates a new Session with a verbatim Log
+  prefix and `forked_from` / `forked_at_seq` metadata.
+- `AgentLoop` can now call a streaming-delta callback when streaming
+  Events are appended.
 - `Session` now owns a `hooks` registry and exposes
   `session.install(StrategyClass, **config)` for symmetry with the
   Ruby reference.

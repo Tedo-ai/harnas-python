@@ -12,6 +12,7 @@ from typing import Any, Callable
 from .session import Session
 
 DEFAULT_MAX_TURNS = 10
+STREAM_DELTA_TYPES = {"assistant_text_delta", "tool_use_argument_delta"}
 
 
 class AgentLoop:
@@ -22,6 +23,7 @@ class AgentLoop:
         provider: Callable[[dict[str, Any]], dict[str, Any]],
         ingestor: Callable[[dict[str, Any]], list[dict[str, Any]]] | None,
         stream_provider: Callable[[dict[str, Any], Callable[[dict[str, Any]], None]], None] | None = None,
+        on_stream_event: Callable[[Any], None] | None = None,
         runner: Any | None = None,
         max_turns: int = DEFAULT_MAX_TURNS,
     ) -> None:
@@ -30,6 +32,7 @@ class AgentLoop:
         self._provider = provider
         self._ingestor = ingestor
         self._stream_provider = stream_provider
+        self._on_stream_event = on_stream_event
         self._runner = runner
         self._max_turns = max_turns
 
@@ -67,7 +70,9 @@ class AgentLoop:
         return last_assistant.payload["stop_reason"] if last_assistant else "end_turn"
 
     def _append_event(self, evt: dict[str, Any]) -> None:
-        self._session.log.append(type=evt["type"], payload=evt["payload"])
+        event = self._session.log.append(type=evt["type"], payload=evt["payload"])
+        if self._on_stream_event is not None and event.type in STREAM_DELTA_TYPES:
+            self._on_stream_event(event)
 
     def _dispatch_pending_tools(self) -> list:
         if self._runner is None:

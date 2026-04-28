@@ -28,3 +28,18 @@ class Session:
 
     def install(self, strategy: Any, **config: Any) -> Any:
         return strategy.install(self, **config)
+
+    def fork(self, at_seq: int) -> "Session":
+        if not isinstance(at_seq, int):
+            raise ValueError("at_seq must be an int")
+        if at_seq < 0 or at_seq >= self.log.size:
+            raise ValueError("at_seq out of range")
+
+        forked = Session.create(metadata={
+            **self.metadata,
+            "forked_from": self.id,
+            "forked_at_seq": at_seq,
+        })
+        for event in list(self.log)[: at_seq + 1]:
+            forked.log._events.append(event)
+        return forked
