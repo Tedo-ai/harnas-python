@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from . import hooks
 from .session import Session
 
 DEFAULT_MAX_TURNS = 10
@@ -51,7 +50,7 @@ class AgentLoop:
         return reason
 
     def _run_turn(self) -> str:
-        hooks.invoke("pre_projection", session=self._session)
+        self._session.hooks.invoke("pre_projection", session=self._session)
         request = self._projection(self._session.log)
         if self._stream_provider is not None:
             self._stream_provider(request, self._append_event)

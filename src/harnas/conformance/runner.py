@@ -13,7 +13,6 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-from .. import hooks
 from ..agent_loop import AgentLoop
 from ..session import Session
 from ..tools.registry import Registry
@@ -69,20 +68,19 @@ def _run_agent(
     runner = Runner(registry) if registry.size > 0 else None
     session = Session.create(metadata={"manifest_name": manifest["name"]})
 
-    with hooks.scoped():
-        _install_strategies(manifest.get("strategies", []))
+    _install_strategies(session, manifest.get("strategies", []))
 
-        for text in inputs:
-            session.log.append(type="user_message", payload={"text": text})
-            AgentLoop(
-                session=session,
-                projection=projection,
-                provider=provider,
-                ingestor=ingestor,
-                stream_provider=provider if streaming else None,
-                runner=runner,
-                max_turns=3,
-            ).run()
+    for text in inputs:
+        session.log.append(type="user_message", payload={"text": text})
+        AgentLoop(
+            session=session,
+            projection=projection,
+            provider=provider,
+            ingestor=ingestor,
+            stream_provider=provider if streaming else None,
+            runner=runner,
+            max_turns=3,
+        ).run()
 
     return _serialize_log(session.log)
 
@@ -94,7 +92,7 @@ def _load_provider_script(fixture_dir: str) -> tuple[list, bool]:
     return json.loads(_read(os.path.join(fixture_dir, "provider-script.json"))), False
 
 
-def _install_strategies(strategies_spec: list[dict[str, Any]]) -> None:
+def _install_strategies(session: Session, strategies_spec: list[dict[str, Any]]) -> None:
     import importlib
     for strategy in strategies_spec:
         name = strategy["name"]
@@ -104,7 +102,7 @@ def _install_strategies(strategies_spec: list[dict[str, Any]]) -> None:
         module = importlib.import_module(module_path, package="harnas.conformance")
         klass = getattr(module, class_name)
         config = strategy.get("config", {})
-        klass.install(**config)
+        session.install(klass, **config)
 
 
 def _build_pipeline(

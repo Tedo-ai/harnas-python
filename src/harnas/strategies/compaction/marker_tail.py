@@ -7,7 +7,7 @@ a fixed marker string when message count exceeds max_messages.
 
 from __future__ import annotations
 
-from ... import hooks
+from ... import hooks as global_hooks
 from ...actions import compact as compact_action
 from ...compaction import helpers
 
@@ -18,6 +18,7 @@ class MarkerTail:
     @classmethod
     def install(
         cls,
+        session=None,
         max_messages: int = 20,
         keep_recent: int = 10,
         summary_format: str = DEFAULT_SUMMARY_FORMAT,
@@ -27,10 +28,16 @@ class MarkerTail:
             keep_recent=keep_recent,
             summary_format=summary_format,
         )
-        hooks.on("pre_projection", instance.on_pre_projection)
+        target_hooks = session.hooks if session is not None else global_hooks
+        target_hooks.on("pre_projection", instance.on_pre_projection)
         return instance.on_pre_projection
 
-    def __init__(self, max_messages: int, keep_recent: int, summary_format: str = DEFAULT_SUMMARY_FORMAT):
+    def __init__(
+        self,
+        max_messages: int,
+        keep_recent: int,
+        summary_format: str = DEFAULT_SUMMARY_FORMAT,
+    ):
         if not (
             isinstance(max_messages, int)
             and isinstance(keep_recent, int)

@@ -51,6 +51,13 @@ bin/conformance.py        — runs every fixture under the spec's
                             conformance/agents/ directory
 ```
 
+## Runtime Scope
+
+Each `Session` owns its own `hooks` registry. Strategies installed from
+the conformance runner use `session.install(...)`, and `AgentLoop`
+invokes `session.hooks`, so concurrent Sessions in one process do not
+share strategy handlers by accident.
+
 ## Run conformance
 
 ```sh

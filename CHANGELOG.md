@@ -9,6 +9,18 @@ the specification as a whole.
 
 ## [Unreleased]
 
+### Reference implementation (Python)
+
+#### Changed
+
+- `Session` now owns a `hooks` registry and exposes
+  `session.install(StrategyClass, **config)` for symmetry with the
+  Ruby reference.
+- `AgentLoop` invokes `session.hooks` instead of the process-global
+  hook registry.
+- Module-level `harnas.hooks` functions remain as backward-compatible
+  wrappers around a process-global default registry.
+
 ## [0.2.0] — 2026-04-28
 
 ### Reference implementation (Python)
