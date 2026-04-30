@@ -9,6 +9,13 @@ the specification as a whole.
 
 ## [Unreleased]
 
+### Reference implementation (Python)
+
+#### Added
+
+- Added a small `harnas` CLI with `inspect`, `fork`, `diff`, and
+  `project` commands for persisted Session JSONL debugging.
+
 ## [0.4.0] — 2026-04-29
 
 ### Reference implementation (Python)

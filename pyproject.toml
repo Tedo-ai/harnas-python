@@ -8,6 +8,9 @@ license = { text = "MIT" }
 authors = [{ name = "René van Pelt", email = "contact@renevanpe.lt" }]
 dependencies = []
 
+[project.scripts]
+harnas = "harnas.cli:main"
+
 [project.optional-dependencies]
 test = ["pytest>=7.0"]
 

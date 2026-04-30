@@ -47,6 +47,7 @@ src/harnas/
 
 bin/conformance.py        — runs every fixture under the spec's
                             conformance/agents/ directory
+bin/harnas                — persisted-Session operator CLI
 ```
 
 ## Runtime Scope
@@ -83,6 +84,22 @@ both into the same parent directory:
 
 Then `python3 bin/conformance.py` from `harnas-python/` will find the
 fixtures at `../harnas/conformance/agents/`.
+
+## Operator CLI
+
+The Python port ships the persisted-Session operator commands shared
+with the Ruby CLI:
+
+```sh
+python3 bin/harnas inspect session.jsonl [--json]
+python3 bin/harnas fork session.jsonl --at-seq N --out forked.jsonl
+python3 bin/harnas diff a.jsonl b.jsonl
+python3 bin/harnas project session.jsonl --manifest manifest.json [--from-seq N] [--to-seq M]
+```
+
+`project` renders the provider request body from a saved Log slice
+without making a provider call. It supports the conformance-facing
+Anthropic, OpenAI, and Gemini projections.
 
 ## Why Python (and Ruby first)?
 
