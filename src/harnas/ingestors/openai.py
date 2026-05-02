@@ -30,14 +30,16 @@ class OpenAI:
         stop = FINISH_REASON_MAP.get(choice.get("finish_reason"), "other")
         usage = self._normalize_usage(response.get("usage") or {})
 
-        events: list[dict[str, Any]] = [{
-            "type": "assistant_message",
-            "payload": {
-                "text": str(message.get("content") or ""),
-                "stop_reason": stop,
-                "usage": usage,
-            },
-        }]
+        payload: dict[str, Any] = {
+            "text": str(message.get("content") or ""),
+            "stop_reason": stop,
+            "usage": usage,
+        }
+        reasoning = self._reasoning_blocks(message)
+        if reasoning:
+            payload["reasoning"] = reasoning
+
+        events: list[dict[str, Any]] = [{"type": "assistant_message", "payload": payload}]
         for call in message.get("tool_calls") or []:
             events.append(self._tool_use_event(call))
         return events
@@ -67,3 +69,16 @@ class OpenAI:
         except (json.JSONDecodeError, TypeError):
             return {}
         return parsed if isinstance(parsed, dict) else {}
+
+    def _reasoning_blocks(self, message: dict[str, Any]) -> list[dict[str, Any]]:
+        blocks: list[dict[str, Any]] = []
+        reasoning = message.get("reasoning")
+        if isinstance(reasoning, str) and reasoning:
+            blocks.append({"type": "text", "text": reasoning})
+        for detail in message.get("reasoning_details") or []:
+            if not isinstance(detail, dict):
+                continue
+            text = detail.get("text") or detail.get("reasoning") or detail.get("content")
+            if isinstance(text, str) and text:
+                blocks.append({"type": "text", "text": text})
+        return blocks

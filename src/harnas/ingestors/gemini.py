@@ -49,10 +49,22 @@ class Gemini:
 
     def _assistant_event(self, parts: list[dict[str, Any]], stop: str, usage: dict[str, int]) -> dict[str, Any]:
         text = "".join(p.get("text", "") for p in parts if "text" in p)
+        payload: dict[str, Any] = {"text": text, "stop_reason": stop, "usage": usage}
+        reasoning = self._reasoning_blocks(parts)
+        if reasoning:
+            payload["reasoning"] = reasoning
         return {
             "type": "assistant_message",
-            "payload": {"text": text, "stop_reason": stop, "usage": usage},
+            "payload": payload,
         }
+
+    def _reasoning_blocks(self, parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        blocks: list[dict[str, Any]] = []
+        for part in parts:
+            thought = part.get("thought") or part.get("thoughtSummary") or part.get("thought_summary")
+            if isinstance(thought, str) and thought:
+                blocks.append({"type": "text", "text": thought})
+        return blocks
 
     def _tool_use_event(self, call: dict[str, Any]) -> dict[str, Any]:
         name = str(call.get("name", ""))

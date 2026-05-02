@@ -39,10 +39,25 @@ class Anthropic:
 
     def _assistant_event(self, content: list[dict[str, Any]], stop: str, usage: dict[str, int]) -> dict[str, Any]:
         text = "".join(b.get("text", "") for b in content if b.get("type") == "text")
+        payload: dict[str, Any] = {"text": text, "stop_reason": stop, "usage": usage}
+        reasoning = self._reasoning_blocks(content)
+        if reasoning:
+            payload["reasoning"] = reasoning
         return {
             "type": "assistant_message",
-            "payload": {"text": text, "stop_reason": stop, "usage": usage},
+            "payload": payload,
         }
+
+    def _reasoning_blocks(self, content: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        blocks: list[dict[str, Any]] = []
+        for block in content:
+            if block.get("type") != "thinking":
+                continue
+            out = {"type": "text", "text": str(block.get("thinking") or "")}
+            if block.get("signature"):
+                out["signature"] = str(block["signature"])
+            blocks.append(out)
+        return blocks
 
     def _tool_use_event(self, block: dict[str, Any]) -> dict[str, Any]:
         return {

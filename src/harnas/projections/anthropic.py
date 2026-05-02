@@ -52,12 +52,13 @@ class Anthropic:
             if translated is None:
                 continue
             role, block = translated
+            blocks = block if isinstance(block, list) else [block]
             if current and current["role"] == role:
-                current["blocks"].append(block)
+                current["blocks"].extend(blocks)
             else:
                 if current is not None:
                     groups.append(current)
-                current = {"role": role, "blocks": [block]}
+                current = {"role": role, "blocks": blocks}
         if current is not None:
             groups.append(current)
         return [self._finalize(g["role"], g["blocks"]) for g in groups]
@@ -72,10 +73,13 @@ class Anthropic:
             case "user_message" | "summary":
                 return ("user", {"type": "text", "text": evt.payload["text"]})
             case "assistant_message":
+                blocks = self._reasoning_blocks(evt)
                 text = evt.payload.get("text", "")
-                if not text:
+                if text:
+                    blocks.append({"type": "text", "text": text})
+                if not blocks:
                     return None
-                return ("assistant", {"type": "text", "text": text})
+                return ("assistant", blocks)
             case "tool_use":
                 return ("assistant", {
                     "type": "tool_use",
@@ -96,6 +100,17 @@ class Anthropic:
                 return ("user", block)
             case _:
                 return None
+
+    def _reasoning_blocks(self, evt) -> list[dict[str, Any]]:
+        blocks: list[dict[str, Any]] = []
+        for block in evt.payload.get("reasoning") or []:
+            if block.get("type") != "text":
+                continue
+            out = {"type": "thinking", "thinking": block.get("text", "")}
+            if block.get("signature"):
+                out["signature"] = block["signature"]
+            blocks.append(out)
+        return blocks
 
     def _tool_descriptors(self) -> list[dict[str, Any]]:
         return [
