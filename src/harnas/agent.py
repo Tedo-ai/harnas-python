@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from .agent_loop import DEFAULT_MAX_TURNS, AgentLoop
+from . import manifest as manifest_loader
 from .session import Session
 
 
@@ -38,6 +39,37 @@ class Agent:
         self.stream_provider = stream_provider
         self.runner = runner
         self.max_turns = max_turns
+
+    @classmethod
+    def from_manifest(
+        cls,
+        source: str | dict[str, Any],
+        *,
+        api_keys: dict[str, str | None] | None = None,
+        tool_handlers: dict[str, Callable[[dict[str, Any]], str]] | None = None,
+        strategy_handlers: dict[str, Callable[..., Any]] | None = None,
+        providers: dict[str, Callable[..., Any]] | None = None,
+        stream_providers: dict[str, Callable[..., Any]] | None = None,
+    ) -> "Agent":
+        loaded = manifest_loader.load(
+            source,
+            api_keys=api_keys,
+            tool_handlers=tool_handlers,
+            strategy_handlers=strategy_handlers,
+            providers=providers,
+            stream_providers=stream_providers,
+        )
+        loaded.install_strategies()
+        return cls(
+            name=loaded.name,
+            session=loaded.session,
+            projection=loaded.projection,
+            provider=loaded.provider,
+            ingestor=loaded.ingestor,
+            stream_provider=loaded.stream_provider,
+            runner=loaded.runner() if loaded.registry.size > 0 else None,
+            max_turns=DEFAULT_MAX_TURNS,
+        )
 
     def chat(self, text: str) -> Response:
         self._append_user_message(text)
