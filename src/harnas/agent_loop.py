@@ -7,13 +7,14 @@ handling lands later.
 
 from __future__ import annotations
 
+import time
 from typing import Any, Callable
 
+from .providers.retry_policy import RetryPolicy
 from .session import Session
 
 DEFAULT_MAX_TURNS = 10
 STREAM_DELTA_TYPES = {"assistant_text_delta", "tool_use_argument_delta"}
-RETRYABLE_HTTP_STATUSES = {408, 429, 500, 502, 503, 504}
 
 
 class AgentLoop:
@@ -26,6 +27,7 @@ class AgentLoop:
         stream_provider: Callable[[dict[str, Any], Callable[[dict[str, Any]], None]], None] | None = None,
         on_stream_event: Callable[[Any], None] | None = None,
         runner: Any | None = None,
+        retry_policy: RetryPolicy | None = None,
         max_turns: int = DEFAULT_MAX_TURNS,
     ) -> None:
         self._session = session
@@ -35,6 +37,7 @@ class AgentLoop:
         self._stream_provider = stream_provider
         self._on_stream_event = on_stream_event
         self._runner = runner
+        self._retry_policy = retry_policy or RetryPolicy()
         self._max_turns = max_turns
 
     def run(self) -> str:
@@ -42,6 +45,10 @@ class AgentLoop:
 
         for _turn in range(self._max_turns):
             stop_reason = self._run_turn()
+
+            if stop_reason == "provider_failed":
+                reason = "provider_failed"
+                break
 
             if stop_reason != "tool_use":
                 reason = "end_turn"
@@ -78,23 +85,20 @@ class AgentLoop:
                         self._append_event(evt)
                 return True
             except Exception as e:  # noqa: BLE001
-                terminal = not self._retryable(e, attempt)
+                decision = self._retry_policy.decide(e, attempt)
+                terminal = not decision.retry
                 self._append_provider_error(e, attempt=attempt, terminal=terminal)
                 if terminal:
                     return False
+                if decision.delay_ms > 0:
+                    time.sleep(decision.delay_ms / 1000)
                 attempt += 1
-
-    def _retryable(self, error: Exception, attempt: int) -> bool:
-        if attempt >= 3:
-            return False
-        status = getattr(error, "status", None)
-        return status in RETRYABLE_HTTP_STATUSES
 
     def _append_provider_error(self, error: Exception, attempt: int, terminal: bool) -> None:
         self._session.log.append(
             type="provider_error",
             payload={
-                "provider": "unknown",
+                "provider": self._provider_kind(),
                 "status": getattr(error, "status", None),
                 "error_class": "Harnas::Providers::HTTPError"
                 if hasattr(error, "status")
@@ -104,6 +108,17 @@ class AgentLoop:
                 "terminal": terminal,
             },
         )
+
+    def _provider_kind(self) -> str:
+        live = self._stream_provider or self._provider
+        class_name = live.__class__.__name__ if live is not None else ""
+        if "Anthropic" in class_name:
+            return "anthropic"
+        if "OpenAI" in class_name:
+            return "openai"
+        if "Gemini" in class_name:
+            return "gemini"
+        return "unknown"
 
     def _append_event(self, evt: dict[str, Any]) -> None:
         event = self._session.log.append(type=evt["type"], payload=evt["payload"])
