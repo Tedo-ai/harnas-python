@@ -16,6 +16,12 @@ the specification as a whole.
 - Added a small `harnas` CLI with `inspect`, `fork`, `diff`, and
   `project` commands for persisted Session JSONL debugging.
 
+#### Clarified
+
+- README scope language now calls the Python port a conformance-first
+  implementation with a planned parity arc, rather than a permanent
+  stub.
+
 ## [0.4.0] — 2026-04-29
 
 ### Reference implementation (Python)

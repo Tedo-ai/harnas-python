@@ -9,8 +9,8 @@ fixtures byte-identically with the
 
 ## Scope
 
-This is a **conformance-first stub**: standard library only, aimed at
-the conformance fixtures. It demonstrates that
+This is a **conformance-first implementation**: standard library only
+today, aimed first at the conformance fixtures. It demonstrates that
 the Harnas specification is genuinely portable — same Log, same wire
 shapes, byte-identical fixture output.
 
@@ -24,8 +24,8 @@ It is **not** at feature parity with the Ruby reference yet. Missing:
 - Built-in tools (read_file / write_file / grep / glob / shell / fetch)
 - Live-provider RetryPolicy controls beyond the conformance default
 
-Closing those is incremental work that follows the Ruby reference's
-patterns; nothing is spec-blocked.
+Closing those is the planned Python parity arc; nothing is
+spec-blocked.
 
 ## Layout
 
@@ -104,11 +104,10 @@ Anthropic, OpenAI, and Gemini projections.
 ## Why Python (and Ruby first)?
 
 The Ruby reference exists to define the spec by example; the Python
-port exists to falsify the claim that the spec is Ruby-coupled. Two
-implementations is the minimum for the word "portable" to mean
-something. Two ports surface the language idioms the spec accidentally
-absorbed; we found two on the way to the initial buffered 5/5
-conformance:
+port exists to falsify the claim that the spec is Ruby-coupled and to
+grow into a peer implementation. Multiple ports surface the language
+idioms the spec accidentally absorbed; we found two on the way to the
+initial buffered 5/5 conformance:
 
 - The strategy `install` contract is class-level only (Ruby allows
   same-named class+instance methods; Python does not). Spec §05
