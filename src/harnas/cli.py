@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
+from .agent import Agent
 from .log import Log
+from .manifest import ManifestError
 from .projections.anthropic import Anthropic
 from .projections.gemini import Gemini
 from .projections.openai import OpenAI
@@ -18,6 +22,7 @@ from .tools.tool import Tool
 
 EXIT_SUCCESS = 0
 EXIT_USAGE = 1
+EXIT_PROVIDER_ERROR = 2
 EXIT_DIFFERENT = 3
 
 
@@ -26,6 +31,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         match args.command:
+            case "chat":
+                return command_chat(args)
             case "diff":
                 return command_diff(args.left, args.right)
             case "fork":
@@ -34,10 +41,12 @@ def main(argv: list[str] | None = None) -> int:
                 return command_inspect(args.session, args.json)
             case "project":
                 return command_project(args)
+            case "run":
+                return command_run(args)
             case _:
                 parser.print_usage(sys.stderr)
                 return EXIT_USAGE
-    except (OSError, ValueError, KeyError) as exc:
+    except (OSError, ValueError, KeyError, ManifestError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_USAGE
 
@@ -45,6 +54,10 @@ def main(argv: list[str] | None = None) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="harnas")
     subparsers = parser.add_subparsers(dest="command")
+
+    chat = subparsers.add_parser("chat", help="start an interactive manifest-backed chat")
+    chat.add_argument("manifest")
+    add_provider_model_options(chat)
 
     diff = subparsers.add_parser("diff", help="compare two Session JSONL files")
     diff.add_argument("left")
@@ -67,7 +80,141 @@ def build_parser() -> argparse.ArgumentParser:
     project.add_argument("--provider")
     project.add_argument("--model")
 
+    run = subparsers.add_parser("run", help="send one input to a manifest-backed agent")
+    run.add_argument("manifest")
+    run.add_argument("--input", required=True)
+    add_provider_model_options(run)
+
     return parser
+
+
+def add_provider_model_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--provider")
+    parser.add_argument("--model")
+
+
+def command_chat(args: argparse.Namespace) -> int:
+    agent = build_agent(args.manifest, provider=args.provider, model=args.model)
+    print(f"harnas chat · agent={agent.name}")
+    print("type 'exit' or 'quit' to leave, Ctrl-D to finish")
+    while True:
+        try:
+            line = input("> ")
+        except EOFError:
+            break
+        text = line.strip()
+        if text == "":
+            continue
+        if text.lower() in {"exit", "quit"}:
+            break
+
+        streamed = False
+
+        def print_delta(delta: Any) -> None:
+            nonlocal streamed
+            if delta.type == "assistant_text_delta":
+                streamed = True
+                print(delta.payload.get("chunk", ""), end="", flush=True)
+
+        response = agent.stream(text, print_delta)
+        error = terminal_provider_error(agent)
+        if error is not None:
+            print(f"provider error: {format_provider_error(error)}", file=sys.stderr)
+        elif streamed:
+            print()
+        else:
+            print(response.text)
+
+    save_session(agent)
+    return EXIT_SUCCESS
+
+
+def command_run(args: argparse.Namespace) -> int:
+    agent = build_agent(args.manifest, provider=args.provider, model=args.model)
+    response = agent.chat(args.input)
+    save_session(agent)
+    error = terminal_provider_error(agent)
+    if error is not None:
+        print(f"provider error: {format_provider_error(error)}", file=sys.stderr)
+        return EXIT_PROVIDER_ERROR
+    print(response.text)
+    return EXIT_SUCCESS
+
+
+def build_agent(path: str, *, provider: str | None, model: str | None) -> Agent:
+    manifest = load_manifest(path, provider=provider, model=model)
+    return Agent.from_manifest(
+        manifest,
+        api_keys=api_keys(),
+        tool_handlers=tool_handlers_for(manifest),
+    )
+
+
+def api_keys() -> dict[str, str | None]:
+    return {
+        "anthropic": os.environ.get("ANTHROPIC_API_KEY"),
+        "openai": os.environ.get("OPENAI_API_KEY"),
+        "gemini": os.environ.get("GEMINI_API_KEY"),
+    }
+
+
+def tool_handlers_for(manifest: dict[str, Any]) -> dict[str, Callable[[dict[str, Any]], str]]:
+    names = [
+        tool.get("handler")
+        for tool in manifest.get("tools", [])
+        if str(tool.get("handler", "")).startswith("harnas.builtin.")
+    ]
+    if not names:
+        return {}
+    try:
+        from .tools.builtin import handlers
+    except ModuleNotFoundError:
+        return {}
+    return handlers()
+
+
+def terminal_provider_error(agent: Agent) -> Any | None:
+    error = next(
+        (
+            event for event in agent.log.reverse_each()
+            if event.type == "provider_error" and event.payload.get("terminal")
+        ),
+        None,
+    )
+    assistant = next(
+        (event for event in agent.log.reverse_each() if event.type == "assistant_message"),
+        None,
+    )
+    if error is not None and (assistant is None or error.seq > assistant.seq):
+        return error
+    return None
+
+
+def format_provider_error(error_event: Any) -> str:
+    payload = error_event.payload
+    message = str(payload.get("message") or "")
+    status = payload.get("status")
+    if status is None or message.startswith(f"HTTP {status}"):
+        return message
+    return f"HTTP {status} {message}"
+
+
+def save_session(agent: Agent) -> Path:
+    path = run_path(agent.name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    agent.session.save(str(path))
+    print(f"saved: {path}", file=sys.stderr)
+    return path
+
+
+def run_path(name: str) -> Path:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return Path(os.environ.get("HOME", ".")).joinpath(".harnas", "runs", f"{stamp}-{slug(name)}.jsonl")
+
+
+def slug(name: str) -> str:
+    chars = [ch.lower() if ch.isalnum() else "-" for ch in name]
+    return "-".join(part for part in "".join(chars).split("-") if part)
 
 
 def command_inspect(path: str, as_json: bool) -> int:
@@ -209,9 +356,23 @@ def load_manifest(path: str, provider: str | None, model: str | None) -> dict[st
     spec = manifest["provider"]
     if provider:
         spec["kind"] = provider
-    if model:
+        spec["model"] = resolve_model(provider, model)
+    elif model:
         spec["model"] = model
     return manifest
+
+
+def resolve_model(provider: str, explicit: str | None) -> str:
+    if explicit:
+        return explicit
+    env = os.environ.get(f"{provider.upper()}_MODEL")
+    if env:
+        return env
+    return {
+        "anthropic": "claude-sonnet-4-5",
+        "openai": "gpt-5.4-mini",
+        "gemini": "gemini-flash-latest",
+    }.get(provider, "")
 
 
 def build_projection(manifest: dict[str, Any]) -> Any:

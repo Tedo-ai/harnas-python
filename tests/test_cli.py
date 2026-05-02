@@ -98,3 +98,32 @@ def test_project_renders_provider_request(tmp_path, capsys):
         {"role": "user", "content": "hello"},
         {"role": "assistant", "content": "hi"},
     ]
+
+
+def test_run_drives_agent_and_saves_session(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    manifest = write_manifest(tmp_path / "manifest.json")
+
+    assert main(["run", str(manifest), "--input", "hello"]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out == "ok\n"
+    assert "saved: " in captured.err
+    saved = list(tmp_path.glob(".harnas/runs/*-cli-test.jsonl"))
+    assert len(saved) == 1
+    session = Session.load(str(saved[0]))
+    assert [event.type for event in session.log] == ["user_message", "assistant_message"]
+
+
+def test_chat_drives_agent_until_quit(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    manifest = write_manifest(tmp_path / "manifest.json")
+    inputs = iter(["hello", "quit"])
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(inputs))
+
+    assert main(["chat", str(manifest)]) == 0
+
+    captured = capsys.readouterr()
+    assert "harnas chat · agent=cli-test" in captured.out
+    assert "ok" in captured.out
+    assert "saved: " in captured.err
