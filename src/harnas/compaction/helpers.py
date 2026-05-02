@@ -28,6 +28,9 @@ def tool_pair_safe_range(log: Log, candidate_seqs: list[int]) -> list[int]:
     safe = set(candidate_seqs)
     for use_seq, result_seq in _tool_pairs(log):
         use_in = use_seq in candidate_set
+        if result_seq is None:
+            safe.discard(use_seq)
+            continue
         result_in = result_seq in candidate_set
         if use_in == result_in:
             continue
@@ -36,7 +39,16 @@ def tool_pair_safe_range(log: Log, candidate_seqs: list[int]) -> list[int]:
     return sorted(safe)
 
 
-def _tool_pairs(log: Log) -> list[tuple[int, int]]:
+def estimate_tokens(events: list) -> int:
+    chars = 0
+    for event in events:
+        for value in event.payload.values():
+            if isinstance(value, str):
+                chars += len(value)
+    return (chars + 3) // 4
+
+
+def _tool_pairs(log: Log) -> list[tuple[int, int | None]]:
     use_seqs: dict[str, int] = {}
     result_seqs: dict[str, int] = {}
     for event in log:
@@ -45,7 +57,6 @@ def _tool_pairs(log: Log) -> list[tuple[int, int]]:
         elif event.type == "tool_result":
             result_seqs[event.payload["tool_use_id"]] = event.seq
     return [
-        (us, result_seqs[id_])
+        (us, result_seqs.get(id_))
         for id_, us in use_seqs.items()
-        if id_ in result_seqs
     ]
