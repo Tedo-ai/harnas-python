@@ -3,29 +3,31 @@
 Python implementation of [Harnas](https://github.com/Tedo-ai/harnas) —
 a specification for LLM agent harnesses. Passes 20/20 conformance
 fixtures byte-identically with the
-[Ruby reference](https://github.com/Tedo-ai/harnas-ruby).
+[Ruby reference](https://github.com/Tedo-ai/harnas-ruby), participates
+in the 3x3 Session JSONL round-trip matrix, and ships live providers,
+tools, strategies, middleware, and a manifest-driven CLI.
 
-**Version 0.5.0** (2026-05-02). Tracks Harnas spec 0.5.0.
+**Version 0.6.0** (2026-05-02). Tracks Harnas spec 0.6.0.
 
 ## Scope
 
-This is a **conformance-first implementation**: standard library only
-today, aimed first at the conformance fixtures. It demonstrates that
-the Harnas specification is genuinely portable — same Log, same wire
-shapes, byte-identical fixture output.
+This is now a peer implementation of Harnas, not just a fixture port.
+It keeps the conformance-first discipline that made the port useful:
+the Log, provider wire shapes, Session JSONL persistence, and fixture
+outputs remain byte-identical across Ruby, Python, and Go.
 
-It is **not** at feature parity with the Ruby reference yet. Missing:
+The Python surface includes:
 
-- Live HTTP providers (Anthropic / OpenAI / Gemini, buffered + streaming)
-- Compaction strategies beyond MarkerTail and ToolOutputCap
-  (TokenMarkerTail, SummaryTail)
-- Permission strategies beyond DenyByName (AlwaysAllow, HumanApproval)
-- Tool middleware (Timed, Logged, Retried, RateLimiter, StaleReadGuard)
-- Built-in tools (read_file / write_file / grep / glob / shell / fetch)
-- Live-provider RetryPolicy controls beyond the conformance default
-
-Closing those is the planned Python parity arc; nothing is
-spec-blocked.
+- Live Anthropic, OpenAI, and Gemini providers, buffered and streaming
+- Manifest loading with provider/model overrides and env API keys
+- `harnas chat` / `harnas run` plus persisted-Session operator commands
+- RetryPolicy-backed provider calls and provider_error Events
+- Built-in tools: read_file, write_file, edit_file, list_dir, glob,
+  grep, run_shell, fetch_url
+- Tool middleware: timed, logged, retried, RateLimiter, StaleReadGuard
+- Compaction strategies: MarkerTail, TokenMarkerTail, SummaryTail,
+  ToolOutputCap
+- Permission strategies: AlwaysAllow, DenyByName, HumanApproval
 
 ## Layout
 
@@ -39,15 +41,18 @@ src/harnas/
 ├── agent_loop.py         — Log → Projection → Provider → Ingestor loop
 ├── projections/          — anthropic, openai, gemini
 ├── ingestors/            — anthropic, openai, gemini
-├── tools/                — Tool, Registry, Runner
-├── strategies/compaction — MarkerTail
+├── providers/            — live + streaming provider clients
+├── tools/                — Tool, Registry, Runner, builtin tools, middleware
+├── strategies/compaction — MarkerTail, TokenMarkerTail, SummaryTail, ToolOutputCap
+├── strategies/permission — AlwaysAllow, DenyByName, HumanApproval
 ├── compaction/helpers.py — message_events, tool_pair_safe_range
 ├── actions/compact.py    — append a :compact mutation
 └── conformance/          — ScriptedProvider + fixture runner
 
-bin/conformance.py        — runs every fixture under the spec's
-                            conformance/agents/ directory
-bin/harnas                — persisted-Session operator CLI
+bin/conformance.py        — runs every agent fixture
+bin/conformance_roundtrip.py — phase runner for Session JSONL interop
+bin/harnas                — manifest + persisted-Session CLI
+bin/smoke-*               — live provider smoke tests
 ```
 
 ## Runtime Scope
@@ -88,9 +93,11 @@ fixtures at `../harnas/conformance/agents/`.
 ## Operator CLI
 
 The Python port ships the persisted-Session operator commands shared
-with the Ruby CLI:
+with the Ruby and Go CLIs:
 
 ```sh
+python3 bin/harnas chat manifest.json
+python3 bin/harnas run manifest.json --input "hello"
 python3 bin/harnas inspect session.jsonl [--json]
 python3 bin/harnas fork session.jsonl --at-seq N --out forked.jsonl
 python3 bin/harnas diff a.jsonl b.jsonl
@@ -100,6 +107,14 @@ python3 bin/harnas project session.jsonl --manifest manifest.json [--from-seq N]
 `project` renders the provider request body from a saved Log slice
 without making a provider call. It supports the conformance-facing
 Anthropic, OpenAI, and Gemini projections.
+
+The live smoke scripts exercise both buffered and streaming providers:
+
+```sh
+ANTHROPIC_API_KEY=... bin/smoke-anthropic "say hello in one word"
+OPENAI_API_KEY=... bin/smoke-openai "say hello in one word"
+GEMINI_API_KEY=... bin/smoke-gemini "say hello in one word"
+```
 
 ## Why Python (and Ruby first)?
 

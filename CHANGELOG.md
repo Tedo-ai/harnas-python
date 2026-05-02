@@ -9,6 +9,42 @@ the specification as a whole.
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-05-02
+
+### Reference implementation (Python)
+
+#### Added
+
+- Added full manifest loading for Python, including validation,
+  provider/model overrides, env API-key resolution, strategy wiring,
+  and `Agent.from_manifest`.
+- Added live buffered and streaming providers for Anthropic, OpenAI,
+  and Gemini, with SSE parsing that accepts LF and CRLF event
+  separators.
+- Added `harnas chat` and `harnas run` to the Python CLI, with
+  manifest-driven execution, streaming chat output when available, and
+  automatic Session JSONL saving under `~/.harnas/runs/`.
+- Added `RetryPolicy` parity for provider calls, including retryable
+  HTTP/network failures, configurable backoff, and correct
+  `provider_failed` loop termination.
+- Added tool middleware helpers: `timed`, `logged`, `retried`,
+  `RateLimiter`, and Log-sourced `StaleReadGuard`.
+- Added canonical built-in tools: read_file, write_file, edit_file,
+  list_dir, glob, grep, run_shell, and fetch_url.
+- Added `Compaction::TokenMarkerTail`,
+  `Compaction::SummaryTail`, `Permission::AlwaysAllow`, and
+  `Permission::HumanApproval`.
+- Added live provider smoke scripts for Anthropic, OpenAI, and Gemini,
+  plus a scheduled GitHub Actions workflow.
+- Added unit coverage for providers, CLI chat/run, RetryPolicy,
+  middleware, strategies, built-in tools, and smoke helpers.
+
+#### Fixed
+
+- `tool_pair_safe_range` now drops in-flight `tool_use` Events that do
+  not yet have a matching `tool_result`, preventing compaction from
+  orphaning active tool calls.
+
 ## [0.5.0] — 2026-05-02
 
 ### Reference implementation (Python)
