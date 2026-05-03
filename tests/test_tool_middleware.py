@@ -56,17 +56,48 @@ def test_stale_read_guard_requires_fresh_read(tmp_path):
     read = guard.wrap_read(lambda args: path.read_text(encoding="utf-8"))
     edit = guard.wrap_edit(lambda args: path.write_text(args["text"], encoding="utf-8") or "ok")
 
-    with pytest.raises(StaleReadError, match="never read"):
+    with pytest.raises(StaleReadError, match="has not been read"):
         edit({"path": str(path), "text": "hi"})
 
     assert read({"path": str(path)}) == "hello"
     path.write_text("changed", encoding="utf-8")
 
-    with pytest.raises(StaleReadError, match="drifted"):
+    with pytest.raises(StaleReadError, match="has changed"):
         edit({"path": str(path), "text": "fresh"})
 
     assert log[-1].type == "annotation"
     assert log[-1].payload["kind"] == "stale_read_guard.hash"
+
+
+def test_stale_read_guard_allows_write_file_creation(tmp_path):
+    path = tmp_path / "fresh.txt"
+    log = Log()
+    guard = StaleReadGuard(log=log, strict=True)
+
+    def write_file(args):
+        path.write_text(args["content"], encoding="utf-8")
+        return "ok"
+
+    write = guard.wrap_write(write_file)
+
+    assert write({"path": str(path), "content": "hello"}) == "ok"
+    assert path.read_text(encoding="utf-8") == "hello"
+
+
+def test_stale_read_guard_refuses_existing_write_without_read(tmp_path):
+    path = tmp_path / "existing.txt"
+    path.write_text("old", encoding="utf-8")
+    log = Log()
+    guard = StaleReadGuard(log=log, strict=True)
+
+    def write_file(args):
+        path.write_text(args["content"], encoding="utf-8")
+        return "ok"
+
+    write = guard.wrap_write(write_file)
+
+    with pytest.raises(StaleReadError, match="has not been read"):
+        write({"path": str(path), "content": "new"})
 
 
 def test_timed_is_transparent():

@@ -165,6 +165,8 @@ class StaleReadGuard:
     def _check_fresh(self, path: str, *, action: str) -> None:
         previous = self.last_hash_for(path)
         if previous is None:
+            if not Path(path).exists():
+                return
             if self.require_read:
                 self._fire(path, action=action, reason="never_read")
             return
@@ -177,10 +179,13 @@ class StaleReadGuard:
             return
         if reason == "never_read":
             raise StaleReadError(
-                f"StaleReadGuard: refuse to {action} {path} - never read; call read_file first"
+                f"StaleReadGuard: refuse to {action} {path} - file exists on disk but has not been read "
+                f"in this session. Call read_file({path}) first to capture its current state, "
+                f"then retry the {action}."
             )
         raise StaleReadError(
-            f"StaleReadGuard: refuse to {action} {path} - disk content drifted since the last read"
+            f"StaleReadGuard: refuse to {action} {path} - disk content has changed since the last "
+            f"read in this session. Call read_file({path}) again to refresh, then retry the {action}."
         )
 
 

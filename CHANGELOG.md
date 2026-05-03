@@ -9,6 +9,14 @@ the specification as a whole.
 
 ## [Unreleased]
 
+### Fixed
+
+- `StaleReadGuard` now allows creation of a file that does not yet exist
+  on disk while still refusing overwrites of existing files that have
+  not been read in the current Session.
+- Clarified `StaleReadGuard` refusal messages so LLM consumers know when
+  to call `read_file` before retrying a write/edit.
+
 ## [0.8.0] — 2026-05-03
 
 ### Reference implementation (Python)
