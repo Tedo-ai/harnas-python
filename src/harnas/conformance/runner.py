@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from dataclasses import dataclass
 from typing import Any
 
@@ -18,6 +19,7 @@ from ..session import Session
 from ..tools.registry import Registry
 from ..tools.runner import Runner
 from ..tools.tool import Tool
+from ..observation import DeltaLogger
 from .scripted_provider import ScriptedProvider
 from .scripted_stream_provider import ScriptedStreamProvider
 
@@ -47,9 +49,18 @@ def run(fixture_dir: str) -> Result:
     script, streaming = _load_provider_script(fixture_dir)
     inputs = json.loads(_read(os.path.join(fixture_dir, "inputs.json")))
     expected = _load_expected(os.path.join(fixture_dir, "expected-log.jsonl"))
+    expected_deltas_path = os.path.join(fixture_dir, "expected-deltas.jsonl")
 
-    actual = _run_agent(manifest, script, inputs, streaming=streaming)
+    actual, actual_deltas = _run_agent_with_optional_deltas(
+        manifest,
+        script,
+        inputs,
+        streaming=streaming,
+        expected_deltas_path=expected_deltas_path,
+    )
     diff = _first_mismatch(actual, expected)
+    if diff is None and os.path.exists(expected_deltas_path):
+        diff = _first_mismatch(actual_deltas, _load_expected(expected_deltas_path))
     return Result(
         fixture=os.path.basename(fixture_dir.rstrip("/")),
         passed=diff is None,
@@ -68,17 +79,41 @@ def _run_agent(
     return _serialize_log(run_session(manifest, script, inputs, streaming=streaming).log)
 
 
+def _run_agent_with_optional_deltas(
+    manifest: dict[str, Any],
+    script: list,
+    inputs: list[str],
+    streaming: bool = False,
+    expected_deltas_path: str | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if not expected_deltas_path or not os.path.exists(expected_deltas_path):
+        return _run_agent(manifest, script, inputs, streaming=streaming), []
+    with tempfile.TemporaryDirectory(prefix="harnas-deltas") as tmp:
+        delta_path = os.path.join(tmp, "session.deltas.jsonl")
+        session = run_session(
+            manifest,
+            script,
+            inputs,
+            streaming=streaming,
+            delta_path=delta_path,
+        )
+        return _serialize_log(session.log), _load_expected(delta_path)
+
+
 def run_session(
     manifest: dict[str, Any],
     script: list,
     inputs: list[str],
     streaming: bool = False,
     session: Session | None = None,
+    delta_path: str | None = None,
 ) -> Session:
     registry = _build_registry(manifest.get("tools", []))
     projection, provider, ingestor = _build_pipeline(manifest, script, registry, streaming)
     runner = Runner(registry) if registry.size > 0 else None
     session = session or Session.create(metadata={"manifest_name": manifest["name"]})
+    if delta_path is not None:
+        DeltaLogger(delta_path, session.observation)
 
     _install_strategies(session, manifest.get("strategies", []))
 

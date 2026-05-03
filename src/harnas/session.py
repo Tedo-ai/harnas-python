@@ -10,6 +10,7 @@ from typing import Any
 from .hooks import Hooks
 from .log import Log
 from .event import Event
+from .observation import Observation
 
 SESSION_HEADER_KEY = "__session__"
 
@@ -25,10 +26,20 @@ class Session:
     log: Log = field(default_factory=Log)
     metadata: dict[str, Any] = field(default_factory=dict)
     hooks: Hooks = field(default_factory=Hooks)
+    observation: Observation = field(default_factory=Observation)
+
+    def __post_init__(self) -> None:
+        self.log.observation = self.observation
 
     @classmethod
     def create(cls, metadata: dict[str, Any] | None = None) -> "Session":
-        return cls(id=f"ses_{uuid.uuid4()}", log=Log(), metadata=metadata or {})
+        observation = Observation()
+        return cls(
+            id=f"ses_{uuid.uuid4()}",
+            log=Log(observation=observation),
+            metadata=metadata or {},
+            observation=observation,
+        )
 
     def install(self, strategy: Any, **config: Any) -> Any:
         return strategy.install(self, **config)
@@ -80,7 +91,8 @@ class Session:
         if not header.get(SESSION_HEADER_KEY):
             raise ValueError("missing session header")
 
-        log = Log()
+        observation = Observation()
+        log = Log(observation=observation)
         for row in rows[1:]:
             log._events.append(Event(
                 seq=row["seq"],
@@ -88,4 +100,9 @@ class Session:
                 type=row["type"],
                 payload=row["payload"],
             ))
-        return cls(id=header["id"], log=log, metadata=header.get("metadata", {}))
+        return cls(
+            id=header["id"],
+            log=log,
+            metadata=header.get("metadata", {}),
+            observation=observation,
+        )

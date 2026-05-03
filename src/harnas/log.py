@@ -16,8 +16,9 @@ class Log:
     at append time and never reused.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, observation: Any | None = None) -> None:
         self._events: list[Event] = []
+        self.observation = observation
 
     def __len__(self) -> int:
         return len(self._events)
@@ -38,6 +39,8 @@ class Log:
         digest = hashlib.sha256(json.dumps(payload).encode()).hexdigest()[:12]
         event = Event(seq=seq, id=f"evt_{seq}_{digest}", type=type, payload=payload)
         self._events.append(event)
+        if self.observation is not None:
+            self.observation.emit("event_appended", event=event, log_size=len(self._events))
         return event
 
     def reverse_each(self) -> Iterator[Event]:

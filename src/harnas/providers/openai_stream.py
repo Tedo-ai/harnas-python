@@ -23,6 +23,7 @@ class OpenAIStreamProvider:
     def __call__(self, request: dict[str, Any], emit: Callable[[dict[str, Any]], None]) -> None:
         body = dict(request)
         body["stream"] = True
+        body["stream_options"] = {"include_usage": True}
         run_stream(
             self.endpoint,
             {

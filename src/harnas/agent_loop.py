@@ -12,9 +12,19 @@ from typing import Any, Callable
 
 from .providers.retry_policy import RetryPolicy
 from .session import Session
+from .event import Event
 
 DEFAULT_MAX_TURNS = 10
 STREAM_DELTA_TYPES = {"assistant_text_delta", "tool_use_argument_delta"}
+STREAM_OBSERVATION_TYPES = {
+    "assistant_turn_started",
+    "assistant_text_delta",
+    "tool_use_begin",
+    "tool_use_argument_delta",
+    "tool_use_end",
+    "assistant_turn_completed",
+    "assistant_turn_failed",
+}
 
 
 class AgentLoop:
@@ -77,7 +87,7 @@ class AgentLoop:
         while True:
             try:
                 if self._stream_provider is not None:
-                    self._stream_provider(request, self._append_event)
+                    self._stream_provider(request, self._handle_stream_event)
                 else:
                     response = self._provider(request)
                     events = self._ingestor(response)
@@ -124,6 +134,15 @@ class AgentLoop:
         event = self._session.log.append(type=evt["type"], payload=evt["payload"])
         if self._on_stream_event is not None and event.type in STREAM_DELTA_TYPES:
             self._on_stream_event(event)
+
+    def _handle_stream_event(self, evt: dict[str, Any]) -> None:
+        if evt["type"] in STREAM_OBSERVATION_TYPES:
+            event = Event(seq=-1, id="stream", type=evt["type"], payload=evt["payload"])
+            self._session.observation.emit("stream_event", event=event)
+            if self._on_stream_event is not None and event.type in STREAM_DELTA_TYPES:
+                self._on_stream_event(event)
+        else:
+            self._session.log.append(type=evt["type"], payload=evt["payload"])
 
     def _dispatch_pending_tools(self) -> list:
         if self._runner is None:
