@@ -50,17 +50,24 @@ def run(fixture_dir: str) -> Result:
     inputs = json.loads(_read(os.path.join(fixture_dir, "inputs.json")))
     expected = _load_expected(os.path.join(fixture_dir, "expected-log.jsonl"))
     expected_deltas_path = os.path.join(fixture_dir, "expected-deltas.jsonl")
+    expected_strategy_events_path = os.path.join(fixture_dir, "expected-strategy-events.jsonl")
 
-    actual, actual_deltas = _run_agent_with_optional_deltas(
+    actual, actual_deltas, actual_strategy_events = _run_agent_with_sidecars(
         manifest,
         script,
         inputs,
         streaming=streaming,
         expected_deltas_path=expected_deltas_path,
+        expected_strategy_events_path=expected_strategy_events_path,
     )
     diff = _first_mismatch(actual, expected)
     if diff is None and os.path.exists(expected_deltas_path):
         diff = _first_mismatch(actual_deltas, _load_expected(expected_deltas_path))
+    if diff is None and os.path.exists(expected_strategy_events_path):
+        diff = _first_mismatch(
+            actual_strategy_events,
+            _load_expected(expected_strategy_events_path),
+        )
     return Result(
         fixture=os.path.basename(fixture_dir.rstrip("/")),
         passed=diff is None,
@@ -79,25 +86,37 @@ def _run_agent(
     return _serialize_log(run_session(manifest, script, inputs, streaming=streaming).log)
 
 
-def _run_agent_with_optional_deltas(
+def _run_agent_with_sidecars(
     manifest: dict[str, Any],
     script: list,
     inputs: list[str],
     streaming: bool = False,
     expected_deltas_path: str | None = None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    if not expected_deltas_path or not os.path.exists(expected_deltas_path):
-        return _run_agent(manifest, script, inputs, streaming=streaming), []
+    expected_strategy_events_path: str | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    needs_deltas = expected_deltas_path and os.path.exists(expected_deltas_path)
+    needs_strategy_events = (
+        expected_strategy_events_path
+        and os.path.exists(expected_strategy_events_path)
+    )
+    if not needs_deltas and not needs_strategy_events:
+        return _run_agent(manifest, script, inputs, streaming=streaming), [], []
     with tempfile.TemporaryDirectory(prefix="harnas-deltas") as tmp:
         delta_path = os.path.join(tmp, "session.deltas.jsonl")
+        strategy_events_path = os.path.join(tmp, "session.strategy-events.jsonl")
         session = run_session(
             manifest,
             script,
             inputs,
             streaming=streaming,
-            delta_path=delta_path,
+            delta_path=delta_path if needs_deltas else None,
+            strategy_events_path=strategy_events_path if needs_strategy_events else None,
         )
-        return _serialize_log(session.log), _load_expected(delta_path)
+        return (
+            _serialize_log(session.log),
+            _load_expected(delta_path) if needs_deltas else [],
+            _load_expected(strategy_events_path) if needs_strategy_events else [],
+        )
 
 
 def run_session(
@@ -107,6 +126,7 @@ def run_session(
     streaming: bool = False,
     session: Session | None = None,
     delta_path: str | None = None,
+    strategy_events_path: str | None = None,
 ) -> Session:
     registry = _build_registry(manifest.get("tools", []))
     projection, provider, ingestor = _build_pipeline(manifest, script, registry, streaming)
@@ -114,8 +134,11 @@ def run_session(
     session = session or Session.create(metadata={"manifest_name": manifest["name"]})
     if delta_path is not None:
         DeltaLogger(delta_path, session.observation)
+    if strategy_events_path is not None:
+        StrategyEventCollector(strategy_events_path, session.observation)
 
     _install_strategies(session, manifest.get("strategies", []))
+    _install_hooks(session, manifest.get("hooks", []))
 
     for input_item in inputs:
         if isinstance(input_item, dict) and "compact" in input_item:
@@ -184,7 +207,58 @@ def _install_strategies(session: Session, strategies_spec: list[dict[str, Any]])
         module = importlib.import_module(module_path, package="harnas.conformance")
         klass = getattr(module, class_name)
         config = strategy.get("config", {})
+        before = session.hooks.handlers()
         session.install(klass, **config)
+        _mark_new_handlers(
+            session,
+            before,
+            name=name,
+            on_error=strategy.get("on_error", "isolate"),
+            source="strategy",
+        )
+
+
+def _install_hooks(session: Session, hooks_spec: list[dict[str, Any]]) -> None:
+    handlers = _conformance_hook_handlers()
+    for hook in hooks_spec:
+        name = hook["handler"]
+        if name not in handlers:
+            raise RuntimeError(f"hook handler {name!r} not in hook_handlers")
+        handler = handlers[name]
+
+        def invoke(_handler=handler, _config=dict(hook.get("config", {})), **ctx):
+            return _handler(**ctx, config=_config)
+
+        session.hooks.on(
+            hook["point"].removeprefix(":"),
+            invoke,
+            name=name,
+            on_error=hook.get("on_error", "isolate"),
+            source="hook",
+        )
+
+
+def _mark_new_handlers(
+    session: Session,
+    before: dict[str, list],
+    *,
+    name: str,
+    on_error: str,
+    source: str,
+) -> None:
+    after = session.hooks.handlers()
+    for point, handlers in after.items():
+        previous = before.get(point, [])
+        for handler in handlers:
+            if handler not in previous:
+                session.hooks.off(point, handler)
+                session.hooks.on(
+                    point,
+                    handler,
+                    name=name,
+                    on_error=on_error,
+                    source=source,
+                )
 
 
 def _build_pipeline(
@@ -249,6 +323,28 @@ def _conformance_stub_handler(handler_name: str):
     return stub
 
 
+def _conformance_hook_handlers():
+    def audit_post_tool_use(*, session, tool_use, tool_result, **_):
+        session.log.append(
+            type="annotation",
+            payload={
+                "kind": "conformance.hook",
+                "data": {
+                    "tool_use_id": tool_use.payload["id"],
+                    "result_seq": tool_result.seq,
+                },
+            },
+        )
+
+    def raise_hook(**_):
+        raise RuntimeError("conformance hook failure")
+
+    return {
+        "conformance.audit_post_tool_use": audit_post_tool_use,
+        "conformance.raise_hook": raise_hook,
+    }
+
+
 def _load_expected(path: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     with open(path, "r", encoding="utf-8") as fh:
@@ -285,3 +381,22 @@ def _first_mismatch(actual: list, expected: list) -> dict[str, Any] | None:
 def _read(path: str) -> str:
     with open(path, "r", encoding="utf-8") as fh:
         return fh.read()
+
+
+class StrategyEventCollector:
+    def __init__(self, path: str, observation) -> None:
+        self.path = path
+        self.index = 0
+        observation.subscribe(self)
+
+    def __call__(self, event_name: str, payload: dict[str, Any]) -> None:
+        if event_name not in {"strategy_started", "strategy_completed"}:
+            return
+        with open(self.path, "a", encoding="utf-8", newline="\n") as fh:
+            fh.write(json.dumps({
+                "index": self.index,
+                "event": event_name,
+                "payload": _normalize(payload),
+            }, separators=(",", ":"), ensure_ascii=False))
+            fh.write("\n")
+        self.index += 1

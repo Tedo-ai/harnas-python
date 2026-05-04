@@ -13,6 +13,7 @@ from typing import Any, Callable
 from .providers.retry_policy import RetryPolicy
 from .session import Session
 from .event import Event
+from .hooks import TurnFailed
 
 DEFAULT_MAX_TURNS = 10
 STREAM_DELTA_TYPES = {"assistant_text_delta", "tool_use_argument_delta"}
@@ -54,9 +55,13 @@ class AgentLoop:
         reason = "max_turns_reached"
 
         for _turn in range(self._max_turns):
-            stop_reason = self._run_turn()
+            try:
+                stop_reason = self._run_turn()
+            except TurnFailed:
+                reason = "runtime_failed"
+                break
 
-            if stop_reason == "provider_failed":
+            if stop_reason in {"provider_failed", "runtime_failed"}:
                 reason = "provider_failed"
                 break
 
@@ -64,7 +69,12 @@ class AgentLoop:
                 reason = "end_turn"
                 break
 
-            if not self._dispatch_pending_tools():
+            try:
+                dispatched = self._dispatch_pending_tools()
+            except TurnFailed:
+                reason = "runtime_failed"
+                break
+            if not dispatched:
                 reason = "no_pending_tools"
                 break
 
@@ -73,6 +83,7 @@ class AgentLoop:
     def _run_turn(self) -> str:
         self._session.hooks.invoke("pre_projection", session=self._session)
         request = self._projection(self._session.log)
+        self._session.hooks.invoke("post_projection", session=self._session, request=request)
         if not self._call_provider_with_retry(request):
             return "provider_failed"
 
@@ -94,6 +105,8 @@ class AgentLoop:
                     for evt in events:
                         self._append_event(evt)
                 return True
+            except TurnFailed:
+                raise
             except Exception as e:  # noqa: BLE001
                 decision = self._retry_policy.decide(e, attempt)
                 terminal = not decision.retry

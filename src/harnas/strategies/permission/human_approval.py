@@ -6,6 +6,7 @@ from typing import Callable
 
 from ... import hooks as global_hooks
 from ...event import Event
+from ..observation import observe_strategy
 
 
 class HumanApproval:
@@ -37,7 +38,17 @@ class HumanApproval:
         self._prompt = prompt
         self._denial_reason = denial_reason
 
-    def on_pre_tool_use(self, *, tool_use, **_):
+    def on_pre_tool_use(self, *, tool_use, session=None, **_):
+        if session is not None:
+            return observe_strategy(
+                session,
+                name="Permission::HumanApproval",
+                hook_point="pre_tool_use",
+                body=lambda: self._approval_decision(tool_use),
+            )
+        return self._approval_decision(tool_use)
+
+    def _approval_decision(self, tool_use):
         if self._prompt(tool_use):
             return {"allow": True}
         return {"allow": False, "reason": self._denial_reason}

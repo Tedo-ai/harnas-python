@@ -58,3 +58,51 @@ class DeltaLogger:
             }, separators=(",", ":"), ensure_ascii=False))
             fh.write("\n")
         self.index += 1
+
+
+class CostTracker:
+    def __init__(
+        self,
+        observation: Observation,
+        *,
+        threshold: int | None = None,
+        on_threshold: Callable[[dict[str, int]], None] | None = None,
+    ) -> None:
+        self.input_tokens = 0
+        self.output_tokens = 0
+        self.turns = 0
+        self._threshold = threshold
+        self._on_threshold = on_threshold
+        self._threshold_fired = False
+        self.subscriber = observation.subscribe(self)
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+    def usage(self) -> dict[str, int]:
+        return {
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.total_tokens,
+            "turns": self.turns,
+        }
+
+    def __call__(self, event_name: str, payload: dict[str, Any]) -> None:
+        if event_name != "event_appended":
+            return
+        event = payload.get("event")
+        if event is None or event.type != "assistant_message":
+            return
+        usage = event.payload.get("usage") or {}
+        self.input_tokens += int(usage.get("input_tokens") or 0)
+        self.output_tokens += int(usage.get("output_tokens") or 0)
+        self.turns += 1
+        if (
+            self._threshold is not None
+            and not self._threshold_fired
+            and self.total_tokens >= self._threshold
+        ):
+            self._threshold_fired = True
+            if self._on_threshold is not None:
+                self._on_threshold(self.usage())

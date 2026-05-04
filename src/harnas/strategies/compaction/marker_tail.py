@@ -10,6 +10,7 @@ from __future__ import annotations
 from ... import hooks as global_hooks
 from ...actions import compact as compact_action
 from ...compaction import helpers
+from ..observation import observe_strategy
 
 
 class MarkerTail:
@@ -49,6 +50,14 @@ class MarkerTail:
         self._summary_format = summary_format
 
     def on_pre_projection(self, *, session) -> None:
+        return observe_strategy(
+            session,
+            name="Compaction::MarkerTail",
+            hook_point="pre_projection",
+            body=lambda: self._on_pre_projection(session=session),
+        )
+
+    def _on_pre_projection(self, *, session) -> None:
         messages = helpers.message_events(session.log)
         if len(messages) <= self._max_messages:
             return

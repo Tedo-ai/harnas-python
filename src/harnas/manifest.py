@@ -57,10 +57,13 @@ class Loaded:
     ingestor: Callable[[dict[str, Any]], list[dict[str, Any]]]
     registry: Registry
     strategies: list["StrategyInstallation"]
+    hooks: list["HookInstallation"]
     stream_provider: Callable[..., Any] | None = None
 
     def install_strategies(self) -> list[Any]:
-        return [strategy.install(self.session) for strategy in self.strategies]
+        installed = [strategy.install(self.session) for strategy in self.strategies]
+        installed.extend(hook.install(self.session) for hook in self.hooks)
+        return installed
 
     def runner(self) -> Runner:
         return Runner(self.registry)
@@ -74,6 +77,7 @@ class Loaded:
             ingestor=self.ingestor,
             registry=self.registry,
             strategies=self.strategies,
+            hooks=self.hooks,
             stream_provider=self.stream_provider,
         )
 
@@ -82,9 +86,51 @@ class Loaded:
 class StrategyInstallation:
     klass: type
     config: dict[str, Any]
+    name: str
+    on_error: str = "isolate"
 
     def install(self, session: Session) -> Any:
-        return self.klass.install(session, **self.config)
+        before = {
+            point: list(handlers)
+            for point, handlers in session.hooks.handlers().items()
+        }
+        result = self.klass.install(session, **self.config)
+        added = _new_handlers(before, session.hooks.handlers())
+        for point, handler in added:
+            session.hooks.off(point, handler)
+            session.hooks.on(
+                point,
+                handler,
+                on_error=self.on_error,
+                name=self.name,
+                source="strategy",
+            )
+        return result
+
+
+@dataclass
+class HookInstallation:
+    point: str
+    handler: Callable[..., Any]
+    name: str
+    config: dict[str, Any]
+    on_error: str = "isolate"
+
+    def install(self, session: Session) -> Any:
+        callable_handler = self._callable()
+        return session.hooks.on(
+            self.point,
+            callable_handler,
+            on_error=self.on_error,
+            name=self.name,
+            source="hook",
+        )
+
+    def _callable(self) -> Callable[..., Any]:
+        def invoke(**ctx: Any) -> Any:
+            return self.handler(**ctx, config=self.config)
+
+        return invoke
 
 
 def load(
@@ -95,6 +141,7 @@ def load(
     api_keys: dict[str, str | None] | None = None,
     providers: dict[str, Callable[..., Any]] | None = None,
     stream_providers: dict[str, Callable[..., Any]] | None = None,
+    hook_handlers: dict[str, Callable[..., Any]] | None = None,
 ) -> Loaded:
     manifest = parse_source(source)
     validate(manifest)
@@ -112,6 +159,7 @@ def load(
         strategy_handlers=strategy_handlers or {},
         provider_bundle=provider_bundle,
     )
+    hooks = build_hooks(manifest.get("hooks", []), hook_handlers=hook_handlers or {})
     return Loaded(
         name=manifest["name"],
         session=Session.create(metadata={"manifest_name": manifest["name"]}),
@@ -121,6 +169,7 @@ def load(
         ingestor=provider_bundle["ingestor"],
         registry=registry,
         strategies=strategies,
+        hooks=hooks,
     )
 
 
@@ -135,7 +184,7 @@ def parse_source(source: str | Path | dict[str, Any]) -> dict[str, Any]:
 
 
 def validate(manifest: dict[str, Any]) -> None:
-    _reject_unknown(manifest, {"harnas_version", "name", "system", "provider", "tools", "strategies"}, "")
+    _reject_unknown(manifest, {"harnas_version", "name", "system", "provider", "tools", "strategies", "hooks"}, "")
     _require(manifest, ["harnas_version", "name", "provider", "tools", "strategies"], "manifest")
     if manifest["harnas_version"] not in SUPPORTED_VERSIONS:
         raise UnsupportedVersionError(
@@ -148,6 +197,7 @@ def validate(manifest: dict[str, Any]) -> None:
     _validate_provider(manifest["provider"])
     _validate_tools(manifest["tools"])
     _validate_strategies(manifest["strategies"])
+    _validate_hooks(manifest.get("hooks", []))
 
 
 def _validate_provider(provider: Any) -> None:
@@ -189,11 +239,34 @@ def _validate_strategies(strategies: Any) -> None:
     for index, strategy in enumerate(strategies):
         if not isinstance(strategy, dict):
             raise ValidationError(f"strategies[{index}] must be an object")
-        _reject_unknown(strategy, {"name", "config"}, f"strategies[{index}]")
+        _reject_unknown(strategy, {"name", "config", "on_error"}, f"strategies[{index}]")
         _require(strategy, ["name"], f"strategies[{index}]")
         name = strategy["name"]
         if "::" not in name:
             raise ValidationError(f"strategy name {name!r} is not canonical")
+        _validate_on_error(strategy.get("on_error", "isolate"), f"strategies[{index}].on_error")
+
+
+def _validate_hooks(hooks: Any) -> None:
+    if not isinstance(hooks, list):
+        raise ValidationError("hooks must be an array")
+    for index, hook in enumerate(hooks):
+        if not isinstance(hook, dict):
+            raise ValidationError(f"hooks[{index}] must be an object")
+        _reject_unknown(hook, {"point", "handler", "config", "on_error"}, f"hooks[{index}]")
+        _require(hook, ["point", "handler"], f"hooks[{index}]")
+        if not isinstance(hook["point"], str) or not hook["point"]:
+            raise ValidationError(f"hooks[{index}].point must be a non-empty string")
+        if not isinstance(hook["handler"], str) or not hook["handler"]:
+            raise ValidationError(f"hooks[{index}].handler must be a non-empty string")
+        if "config" in hook and not isinstance(hook["config"], dict):
+            raise ValidationError(f"hooks[{index}].config must be an object")
+        _validate_on_error(hook.get("on_error", "isolate"), f"hooks[{index}].on_error")
+
+
+def _validate_on_error(value: Any, label: str) -> None:
+    if value not in {"isolate", "fail_turn"}:
+        raise ValidationError(f"{label} must be 'isolate' or 'fail_turn'")
 
 
 def _reject_unknown(value: dict[str, Any], allowed: set[str], label: str) -> None:
@@ -367,5 +440,47 @@ def build_strategies(
                 config[field] = strategy_handlers[handler_name]
         for field in IMPLICIT_BUNDLE_FIELDS.get(name, []):
             config[field] = provider_bundle[field]
-        installations.append(StrategyInstallation(klass=klass, config=config))
+        installations.append(
+            StrategyInstallation(
+                klass=klass,
+                config=config,
+                name=name,
+                on_error=strategy.get("on_error", "isolate"),
+            )
+        )
     return installations
+
+
+def build_hooks(
+    hooks_spec: list[dict[str, Any]],
+    *,
+    hook_handlers: dict[str, Callable[..., Any]],
+) -> list[HookInstallation]:
+    installations: list[HookInstallation] = []
+    for hook in hooks_spec:
+        handler_name = hook["handler"]
+        if handler_name not in hook_handlers:
+            raise UnresolvedHandlerError(f"hook handler {handler_name!r} not in hook_handlers")
+        installations.append(
+            HookInstallation(
+                point=hook["point"].removeprefix(":"),
+                handler=hook_handlers[handler_name],
+                name=handler_name,
+                config=dict(hook.get("config", {})),
+                on_error=hook.get("on_error", "isolate"),
+            )
+        )
+    return installations
+
+
+def _new_handlers(
+    before: dict[str, list[Callable]],
+    after: dict[str, list[Callable]],
+) -> list[tuple[str, Callable]]:
+    added: list[tuple[str, Callable]] = []
+    for point, handlers in after.items():
+        previous = before.get(point, [])
+        for handler in handlers:
+            if handler not in previous:
+                added.append((point, handler))
+    return added
