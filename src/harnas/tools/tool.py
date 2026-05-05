@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import inspect
 from typing import Any, Callable
 
 
@@ -15,7 +16,21 @@ class Tool:
     name: str
     description: str
     input_schema: dict[str, Any]
-    handler: Callable[[dict[str, Any]], str]
+    handler: Callable[..., str]
+    config: dict[str, Any] | None = None
 
     def __call__(self, arguments: dict[str, Any]) -> str:
+        if _accepts_config(self.handler):
+            return self.handler(arguments, config=self.config or {})
         return self.handler(arguments)
+
+
+def _accepts_config(handler: Callable[..., Any]) -> bool:
+    try:
+        signature = inspect.signature(handler)
+    except (TypeError, ValueError):
+        return False
+    return any(
+        param.kind == inspect.Parameter.VAR_KEYWORD or name == "config"
+        for name, param in signature.parameters.items()
+    )

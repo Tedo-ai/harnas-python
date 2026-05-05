@@ -131,7 +131,10 @@ def run_session(
     registry = _build_registry(manifest.get("tools", []))
     projection, provider, ingestor = _build_pipeline(manifest, script, registry, streaming)
     runner = Runner(registry) if registry.size > 0 else None
-    session = session or Session.create(metadata={"manifest_name": manifest["name"]})
+    session = session or Session.create(metadata={
+        "manifest_name": manifest["name"],
+        "manifest": json.loads(json.dumps(manifest, ensure_ascii=False)),
+    })
     if delta_path is not None:
         DeltaLogger(delta_path, session.observation)
     if strategy_events_path is not None:
@@ -162,6 +165,15 @@ def run_session(
             forked = parent.fork(at_seq=at_seq)
             _verify_fork(parent, forked, at_seq)
             session = forked
+            continue
+
+        if isinstance(input_item, dict) and "save_load" in input_item:
+            with tempfile.TemporaryDirectory(prefix="harnas-save-load") as tmp:
+                path = os.path.join(tmp, "session.jsonl")
+                session.save(path)
+                session = Session.load(path)
+                if _normalize(session.metadata.get("manifest")) != _normalize(manifest):
+                    raise RuntimeError("manifest snapshot mismatch")
             continue
 
         text = input_item["user"] if isinstance(input_item, dict) else input_item
@@ -306,6 +318,7 @@ def _build_registry(tools_spec: list[dict[str, Any]]) -> Registry:
             description=tool_def["description"],
             input_schema=tool_def["input_schema"],
             handler=_conformance_stub_handler(handler_name),
+            config=dict(tool_def.get("config", {})),
         ))
     return registry
 
@@ -315,9 +328,17 @@ def _conformance_stub_handler(handler_name: str):
     output (spec/conformance/README.md): canonical compact JSON for
     the args.
     """
-    def stub(args: dict[str, Any]) -> str:
+    def stub(args: dict[str, Any], *, config: dict[str, Any] | None = None) -> str:
         if handler_name == "conformance.raise_error":
             raise RuntimeError("conformance tool error")
+        if handler_name == "conformance.echo_config":
+            encoded_config = json.dumps(
+                config or {},
+                separators=(",", ":"),
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+            return f"[conformance config: {encoded_config}]"
         encoded = json.dumps(args, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
         return f"[conformance stub: {handler_name}({encoded})]"
     return stub

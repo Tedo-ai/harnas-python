@@ -162,7 +162,10 @@ def load(
     hooks = build_hooks(manifest.get("hooks", []), hook_handlers=hook_handlers or {})
     return Loaded(
         name=manifest["name"],
-        session=Session.create(metadata={"manifest_name": manifest["name"]}),
+        session=Session.create(metadata={
+            "manifest_name": manifest["name"],
+            "manifest": manifest_snapshot(manifest),
+        }),
         projection=provider_bundle["projection"],
         provider=provider_bundle["provider"],
         stream_provider=provider_bundle["stream_provider"],
@@ -220,7 +223,7 @@ def _validate_tools(tools: Any) -> None:
     for index, tool in enumerate(tools):
         if not isinstance(tool, dict):
             raise ValidationError(f"tools[{index}] must be an object")
-        _reject_unknown(tool, {"name", "handler", "description", "input_schema"}, f"tools[{index}]")
+        _reject_unknown(tool, {"name", "handler", "description", "input_schema", "config"}, f"tools[{index}]")
         _require(tool, ["name", "handler", "description", "input_schema"], f"tools[{index}]")
         if not tool["name"]:
             raise ValidationError(f"tools[{index}].name must not be empty")
@@ -231,6 +234,8 @@ def _validate_tools(tools: Any) -> None:
             raise ValidationError(f"tools[{index}].handler must not be empty")
         if not isinstance(tool["input_schema"], dict):
             raise ValidationError(f"tools[{index}].input_schema must be an object")
+        if "config" in tool and not isinstance(tool["config"], dict):
+            raise ValidationError(f"tools[{index}].config must be an object")
 
 
 def _validate_strategies(strategies: Any) -> None:
@@ -296,8 +301,13 @@ def build_registry(
             description=tool_def["description"],
             input_schema=tool_def["input_schema"],
             handler=tool_handlers[handler_name],
+            config=dict(tool_def.get("config", {})),
         ))
     return registry
+
+
+def manifest_snapshot(manifest: dict[str, Any]) -> dict[str, Any]:
+    return json.loads(json.dumps(manifest, ensure_ascii=False))
 
 
 def build_provider(
