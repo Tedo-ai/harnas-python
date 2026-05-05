@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+      - name: Checkout spec
+        uses: actions/checkout@v5
+        with:
+          repository: Tedo-ai/harnas
+          path: harnas-spec
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e .[test] build
+      - run: python -m py_compile $(find src -name '*.py') $(find tests -name '*.py')
+      - run: pytest
+      - run: HARNAS_SPEC="$GITHUB_WORKSPACE/harnas-spec" python bin/conformance.py
+      - run: python -m build

@@ -1,10 +1,10 @@
 [project]
 name = "harnas"
-version = "0.8.0"
+version = "0.9.1"
 description = "Python implementation of Harnas — a specification for LLM agent harnesses"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "René van Pelt", email = "contact@renevanpe.lt" }]
 dependencies = []
 
@@ -15,7 +15,7 @@ harnas = "harnas.cli:main"
 test = ["pytest>=7.0"]
 
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

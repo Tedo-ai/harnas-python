@@ -9,6 +9,15 @@ the specification as a whole.
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-05-05
+
+### Trust polish
+
+- Updated README version and fixture-count language to match the
+  verified v0.9.1 surface.
+- Bumped Python package metadata and `harnas.__version__` to 0.9.1.
+- Added normal push/PR CI for pytest, py_compile, and conformance.
+
 ### v0.9.1
 
 #### Added
@@ -18,6 +27,8 @@ the specification as a whole.
   available to handlers as `config=`.
 - Conformance now passes 28/28 fixtures, including
   `with-tool-config-roundtrip`.
+
+## [0.9.0] — 2026-05-05
 
 ### Added
 
@@ -195,6 +206,12 @@ initial buffered conformance fixtures byte-identically with the Ruby
 reference, while intentionally remaining a conformance-first,
 standard-library-only port rather than a full peer implementation.
 
+[0.9.1]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.9.1
+[0.9.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.9.0
+[0.8.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.8.0
+[0.7.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.7.0
+[0.6.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.6.0
+[0.5.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.4.0
 [0.2.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.1.0
