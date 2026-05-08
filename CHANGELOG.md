@@ -9,6 +9,19 @@ the specification as a whole.
 
 ## [Unreleased]
 
+## [0.9.2] — 2026-05-08
+
+### Conformance
+
+- Tracks the v0.9.2 spec, which hardens `with-tool-call-openai` to
+  assert on the second projected request via `expect_request`. The
+  Python OpenAI projection already conformed to the clarified contract
+  (folds `:tool_use` into the preceding assistant message's
+  `tool_calls[]`, emits `:tool_result` as `role: "tool"`, normalizes
+  `content` to `None` when `tool_calls[]` is present); this release
+  bumps the version in lockstep so "running spec X means impl X"
+  stays simple. No code changes.
+
 ## [0.9.1] — 2026-05-05
 
 ### Trust polish
@@ -206,6 +219,7 @@ initial buffered conformance fixtures byte-identically with the Ruby
 reference, while intentionally remaining a conformance-first,
 standard-library-only port rather than a full peer implementation.
 
+[0.9.2]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.9.2
 [0.9.1]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.9.1
 [0.9.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.9.0
 [0.8.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.8.0
