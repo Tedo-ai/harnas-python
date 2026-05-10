@@ -7,7 +7,7 @@ fixtures against the
 in the 3x3 Session JSONL round-trip matrix, and ships live providers,
 tools, strategies, middleware, and a manifest-driven CLI.
 
-**Version 0.9.2** (2026-05-08). Tracks Harnas spec 0.9.2.
+**Version 0.9.3** (2026-05-10). Tracks Harnas spec 0.9.3.
 
 ## Scope
 

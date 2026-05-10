@@ -9,6 +9,16 @@ the specification as a whole.
 
 ## [Unreleased]
 
+## [0.9.3] — 2026-05-10
+
+### Informative
+
+- Tracks the v0.9.3 spec, which adds non-normative ecosystem
+  conventions for skills and MCP mappings. No Python runtime behavior
+  changes; the `load_skill` built-in and skills-index helper are
+  planned for v0.10.
+- Bumped Python package metadata and `harnas.__version__` to 0.9.3.
+
 ## [0.9.2] — 2026-05-08
 
 ### Conformance
@@ -219,6 +229,7 @@ initial buffered conformance fixtures byte-identically with the Ruby
 reference, while intentionally remaining a conformance-first,
 standard-library-only port rather than a full peer implementation.
 
+[0.9.3]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.9.3
 [0.9.2]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.9.2
 [0.9.1]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.9.1
 [0.9.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.9.0
