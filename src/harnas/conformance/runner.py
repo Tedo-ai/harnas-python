@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import copy
 from dataclasses import dataclass
 from typing import Any
 
@@ -46,6 +47,7 @@ class Result:
 
 def run(fixture_dir: str) -> Result:
     manifest = json.loads(_read(os.path.join(fixture_dir, "manifest.json")))
+    manifest = _resolve_fixture_paths(manifest, fixture_dir)
     script, streaming = _load_provider_script(fixture_dir)
     inputs = json.loads(_read(os.path.join(fixture_dir, "inputs.json")))
     expected = _load_expected(os.path.join(fixture_dir, "expected-log.jsonl"))
@@ -313,14 +315,25 @@ def _build_registry(tools_spec: list[dict[str, Any]]) -> Registry:
     registry = Registry()
     for tool_def in tools_spec:
         handler_name = tool_def["handler"]
+        handler = (
+            _builtin_load_skill_handler()
+            if handler_name == "harnas.builtin.load_skill"
+            else _conformance_stub_handler(handler_name)
+        )
         registry.register(Tool(
             name=tool_def["name"],
             description=tool_def["description"],
             input_schema=tool_def["input_schema"],
-            handler=_conformance_stub_handler(handler_name),
+            handler=handler,
             config=dict(tool_def.get("config", {})),
         ))
     return registry
+
+
+def _builtin_load_skill_handler():
+    from ..tools.builtin import load_skill
+
+    return load_skill
 
 
 def _conformance_stub_handler(handler_name: str):
@@ -342,6 +355,18 @@ def _conformance_stub_handler(handler_name: str):
         encoded = json.dumps(args, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
         return f"[conformance stub: {handler_name}({encoded})]"
     return stub
+
+
+def _resolve_fixture_paths(manifest: dict[str, Any], fixture_dir: str) -> dict[str, Any]:
+    updated = copy.deepcopy(manifest)
+    for tool in updated.get("tools", []):
+        config = tool.get("config")
+        if not isinstance(config, dict):
+            continue
+        skills_dir = config.get("skills_dir")
+        if isinstance(skills_dir, str) and not os.path.isabs(skills_dir):
+            config["skills_dir"] = os.path.abspath(os.path.join(fixture_dir, skills_dir))
+    return updated
 
 
 def _conformance_hook_handlers():

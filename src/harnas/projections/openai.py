@@ -64,7 +64,12 @@ class OpenAI:
             "type": "function",
             "function": {
                 "name": evt.payload["name"],
-                "arguments": json.dumps(evt.payload.get("arguments") or {}),
+                "arguments": json.dumps(
+                    evt.payload.get("arguments") or {},
+                    separators=(",", ":"),
+                    sort_keys=True,
+                    ensure_ascii=False,
+                ),
             },
         }
         prev = messages[-1] if messages else None

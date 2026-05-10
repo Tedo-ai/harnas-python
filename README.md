@@ -1,13 +1,13 @@
 # harnas-python
 
 Python implementation of [Harnas](https://github.com/Tedo-ai/harnas) —
-a specification for LLM agent harnesses. Passes 28/28 conformance
+a specification for LLM agent harnesses. Passes 30/30 conformance
 fixtures against the
 [Ruby reference](https://github.com/Tedo-ai/harnas-ruby), participates
 in the 3x3 Session JSONL round-trip matrix, and ships live providers,
 tools, strategies, middleware, and a manifest-driven CLI.
 
-**Version 0.9.3** (2026-05-10). Tracks Harnas spec 0.9.3.
+**Version 0.10.0** (2026-05-10). Tracks Harnas spec 0.10.0.
 
 ## Scope
 
@@ -23,7 +23,7 @@ The Python surface includes:
 - `harnas chat` / `harnas run` plus persisted-Session operator commands
 - RetryPolicy-backed provider calls and provider_error Events
 - Built-in tools: read_file, write_file, edit_file, list_dir, glob,
-  grep, run_shell, fetch_url
+  grep, run_shell, fetch_url, load_skill
 - Tool middleware: timed, logged, retried, RateLimiter, StaleReadGuard
 - Compaction strategies: MarkerTail, TokenMarkerTail, SummaryTail,
   ToolOutputCap
@@ -39,6 +39,7 @@ src/harnas/
 ├── mutations.py          — :compact / :revert resolution
 ├── hooks.py              — bidirectional intervention bus
 ├── observation.py        — Observation bus + DeltaLogger
+├── skills.py             — skills index + frontmatter helpers
 ├── agent_loop.py         — Log → Projection → Provider → Ingestor loop
 ├── projections/          — anthropic, openai, gemini
 ├── ingestors/            — anthropic, openai, gemini

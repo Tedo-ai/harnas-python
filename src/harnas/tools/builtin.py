@@ -9,6 +9,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
+from harnas import skills
+
 DEFAULT_SHELL_TIMEOUT_SECONDS = 30
 GREP_MAX_MATCHES = 200
 MAX_FETCH_BYTES = 256 * 1024
@@ -24,6 +26,7 @@ def handlers() -> dict[str, Callable[[dict[str, Any]], str]]:
         "harnas.builtin.grep": grep,
         "harnas.builtin.run_shell": run_shell,
         "harnas.builtin.fetch_url": fetch_url,
+        "harnas.builtin.load_skill": load_skill,
     }
 
 
@@ -119,6 +122,16 @@ DESCRIPTORS = [
             "type": "object",
             "properties": {"url": {"type": "string"}},
             "required": ["url"],
+        },
+    },
+    {
+        "name": "load_skill",
+        "handler": "harnas.builtin.load_skill",
+        "description": "Load the body of a named skill from the configured skills directory.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
         },
     },
 ]
@@ -223,6 +236,25 @@ def fetch_url(args: dict[str, Any]) -> str:
         body = response.read(MAX_FETCH_BYTES).decode("utf-8", errors="replace")
         status = getattr(response, "status", response.getcode())
     return f"HTTP {status}\n{body}"
+
+
+def load_skill(args: dict[str, Any], *, config: dict[str, Any] | None = None) -> str:
+    name = _require(args, "name")
+    if not skills.valid_name(name):
+        raise RuntimeError(f"invalid skill name: {name}")
+    config = config or {}
+    skills_dir = str(config.get("skills_dir") or "")
+    if not skills_dir:
+        raise RuntimeError("missing skills_dir config")
+    allowed = {path.stem for path in Path(skills_dir).glob("*.md")}
+    if name not in allowed:
+        raise RuntimeError(f"unknown skill: {name}")
+    path = Path(skills_dir) / f"{name}.md"
+    strip_frontmatter = bool(config.get("strip_frontmatter", True))
+    if not strip_frontmatter:
+        return path.read_text(encoding="utf-8")
+    _frontmatter, body = skills.parse_skill_file(path)
+    return body
 
 
 def _require(args: dict[str, Any], key: str) -> str:

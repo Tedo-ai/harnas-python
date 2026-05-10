@@ -9,6 +9,25 @@ the specification as a whole.
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-05-10
+
+### Added
+
+- Added `harnas.skills.build_index`, which scans a skills directory
+  and emits the canonical `## Skills` system-prompt section.
+- Added the `harnas.builtin.load_skill` built-in tool with
+  config-driven `skills_dir`, frontmatter stripping, skill-name
+  validation, and empty-body support.
+- Conformance now passes 30/30 fixtures, including `with-skills` and
+  `with-skills-invalid-name`.
+- Bumped Python package metadata and `harnas.__version__` to 0.10.0.
+
+### Fixed
+
+- OpenAI projection now serializes tool-call argument JSON compactly and
+  with sorted keys, matching Ruby/Go and the stricter `expect_request`
+  fixtures.
+
 ## [0.9.3] — 2026-05-10
 
 ### Informative
@@ -229,6 +248,7 @@ initial buffered conformance fixtures byte-identically with the Ruby
 reference, while intentionally remaining a conformance-first,
 standard-library-only port rather than a full peer implementation.
 
+[0.10.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.10.0
 [0.9.3]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.9.3
 [0.9.2]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.9.2
 [0.9.1]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.9.1

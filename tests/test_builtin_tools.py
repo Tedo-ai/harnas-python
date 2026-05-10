@@ -18,15 +18,16 @@ def test_builtin_handlers_contains_canonical_tools():
         "harnas.builtin.grep",
         "harnas.builtin.run_shell",
         "harnas.builtin.fetch_url",
+        "harnas.builtin.load_skill",
     ]:
         assert name in handlers
 
 
 def test_builtin_descriptors_expose_canonical_tool_schemas():
     descriptors = builtin.descriptors()
-    assert len(descriptors) == 8
+    assert len(descriptors) == 9
     by_name = {descriptor["name"]: descriptor for descriptor in descriptors}
-    for name in ["read_file", "write_file", "edit_file", "list_dir", "glob", "grep", "run_shell", "fetch_url"]:
+    for name in ["read_file", "write_file", "edit_file", "list_dir", "glob", "grep", "run_shell", "fetch_url", "load_skill"]:
         assert by_name[name]["handler"]
         assert by_name[name]["description"]
         assert by_name[name]["input_schema"]
@@ -86,6 +87,22 @@ def test_builtin_fetch_url():
 
     assert "HTTP 200" in result
     assert "hello" in result
+
+
+def test_builtin_load_skill_strips_frontmatter(tmp_path):
+    (tmp_path / "git_workflow.md").write_text(
+        "---\nname: git_workflow\ndescription: Git conventions\n---\nWrite crisp PR descriptions.\n",
+        encoding="utf-8",
+    )
+
+    result = builtin.load_skill({"name": "git_workflow"}, config={"skills_dir": str(tmp_path)})
+
+    assert result == "Write crisp PR descriptions.\n"
+
+
+def test_builtin_load_skill_rejects_invalid_names(tmp_path):
+    with pytest.raises(RuntimeError, match="invalid skill name: foo-bar"):
+        builtin.load_skill({"name": "foo-bar"}, config={"skills_dir": str(tmp_path)})
 
 
 def test_builtin_fetch_url_rejects_unsupported_schemes():
