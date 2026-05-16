@@ -19,15 +19,27 @@ def test_builtin_handlers_contains_canonical_tools():
         "harnas.builtin.run_shell",
         "harnas.builtin.fetch_url",
         "harnas.builtin.load_skill",
+        "harnas.builtin.bash_session",
     ]:
         assert name in handlers
 
 
 def test_builtin_descriptors_expose_canonical_tool_schemas():
     descriptors = builtin.descriptors()
-    assert len(descriptors) == 9
+    assert len(descriptors) == 10
     by_name = {descriptor["name"]: descriptor for descriptor in descriptors}
-    for name in ["read_file", "write_file", "edit_file", "list_dir", "glob", "grep", "run_shell", "fetch_url", "load_skill"]:
+    for name in [
+        "read_file",
+        "write_file",
+        "edit_file",
+        "list_dir",
+        "glob",
+        "grep",
+        "run_shell",
+        "fetch_url",
+        "load_skill",
+        "bash_session",
+    ]:
         assert by_name[name]["handler"]
         assert by_name[name]["description"]
         assert by_name[name]["input_schema"]
@@ -63,6 +75,110 @@ def test_builtin_run_shell():
 
     assert "[exit 0]" in result
     assert "hello" in result
+
+
+def test_builtin_bash_session_persists_working_directory_and_env(tmp_path):
+    registry = builtin.BashSessionRegistry()
+    try:
+        first = _bash_result(registry.handle({
+            "session_id": "s1",
+            "command": "export MYVAR=hello && cd /tmp",
+        }, config={"cwd": str(tmp_path), "max_output_bytes": 4096}))
+
+        assert first["status"] == "completed"
+        assert first["exit_code"] == 0
+
+        second = _bash_result(registry.handle({
+            "session_id": "s1",
+            "command": "echo $MYVAR && pwd",
+        }, config={"cwd": str(tmp_path), "max_output_bytes": 4096}))
+
+        assert "hello\n/tmp\n" in second["stdout"]
+    finally:
+        registry.close()
+
+
+def test_builtin_bash_session_reports_command_local_output(tmp_path):
+    registry = builtin.BashSessionRegistry()
+    try:
+        first = _bash_result(registry.handle({
+            "session_id": "s1",
+            "command": "printf first",
+        }, config={"cwd": str(tmp_path), "max_output_bytes": 4096}))
+
+        assert first["stdout"] == "first"
+        assert first["command_stdout"] == "first"
+
+        second = _bash_result(registry.handle({
+            "session_id": "s1",
+            "command": "printf second >&2",
+        }, config={"cwd": str(tmp_path), "max_output_bytes": 4096}))
+
+        assert second["stdout"] == "first"
+        assert second["command_stdout"] == ""
+        assert second["stderr"] == "second"
+        assert second["command_stderr"] == "second"
+    finally:
+        registry.close()
+
+
+def test_builtin_bash_session_timeout_status_and_kill(tmp_path):
+    registry = builtin.BashSessionRegistry()
+    try:
+        running = _bash_result(registry.handle({
+            "session_id": "s1",
+            "command": "sleep 5",
+            "timeout_ms": 50,
+        }, config={"cwd": str(tmp_path)}))
+
+        assert running["status"] == "running"
+        assert running["exit_code"] is None
+
+        status = _bash_result(registry.handle({"session_id": "s1", "action": "status"}))
+        assert status["status"] == "running"
+
+        killed = _bash_result(registry.handle({"session_id": "s1", "action": "kill"}))
+        assert killed["status"] == "killed"
+    finally:
+        registry.close()
+
+
+def test_builtin_bash_session_truncates_and_strips_ansi(tmp_path):
+    registry = builtin.BashSessionRegistry()
+    try:
+        result = _bash_result(registry.handle({
+            "session_id": "s1",
+            "command": "printf '\\033[31m0123456789\\033[0m'",
+        }, config={"cwd": str(tmp_path), "max_output_bytes": 5}))
+
+        assert result["truncated"] is True
+        assert result["stdout"] == "56789"
+        assert "\x1b" not in result["stdout"]
+    finally:
+        registry.close()
+
+
+def test_builtin_bash_session_nonzero_exit_is_tool_output(tmp_path):
+    registry = builtin.BashSessionRegistry()
+    try:
+        result = _bash_result(registry.handle({
+            "session_id": "s1",
+            "command": "python3 -c 'import sys; sys.exit(7)'",
+        }, config={"cwd": str(tmp_path)}))
+
+        assert result["status"] == "completed"
+        assert result["exit_code"] == 7
+    finally:
+        registry.close()
+
+
+def test_builtin_bash_session_unknown_status_errors():
+    registry = builtin.BashSessionRegistry()
+    try:
+        with pytest.raises(ValueError, match="unknown bash_session session_id"):
+            registry.handle({"session_id": "missing", "action": "status"})
+    finally:
+        registry.close()
 
 
 def test_builtin_fetch_url():
@@ -108,3 +224,9 @@ def test_builtin_load_skill_rejects_invalid_names(tmp_path):
 def test_builtin_fetch_url_rejects_unsupported_schemes():
     with pytest.raises(ValueError, match="only http"):
         builtin.fetch_url({"url": "file:///etc/passwd"})
+
+
+def _bash_result(value):
+    import json
+
+    return json.loads(value)

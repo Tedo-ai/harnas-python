@@ -23,7 +23,7 @@ The Python surface includes:
 - `harnas chat` / `harnas run` plus persisted-Session operator commands
 - RetryPolicy-backed provider calls and provider_error Events
 - Built-in tools: read_file, write_file, edit_file, list_dir, glob,
-  grep, run_shell, fetch_url, load_skill
+  grep, run_shell, fetch_url, load_skill, experimental bash_session
 - Tool middleware: timed, logged, retried, RateLimiter, StaleReadGuard
 - Compaction strategies: MarkerTail, TokenMarkerTail, SummaryTail,
   ToolOutputCap

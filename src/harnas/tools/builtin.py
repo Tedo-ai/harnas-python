@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import glob as glob_module
+import json
+import os
 import re
+import shutil
+import signal
 import subprocess
+import threading
 import urllib.request
+import uuid
 from pathlib import Path
 from typing import Any, Callable
 
@@ -14,6 +20,9 @@ from harnas import skills
 DEFAULT_SHELL_TIMEOUT_SECONDS = 30
 GREP_MAX_MATCHES = 200
 MAX_FETCH_BYTES = 256 * 1024
+DEFAULT_BASH_SESSION_MAX_OUTPUT_BYTES = 64 * 1024
+ANSI_PATTERN = re.compile(r"\x1b\[[0-9;]*[mGKHF]|\r")
+_BASH_SESSION_REGISTRY = None
 
 
 def handlers() -> dict[str, Callable[[dict[str, Any]], str]]:
@@ -27,6 +36,7 @@ def handlers() -> dict[str, Callable[[dict[str, Any]], str]]:
         "harnas.builtin.run_shell": run_shell,
         "harnas.builtin.fetch_url": fetch_url,
         "harnas.builtin.load_skill": load_skill,
+        "harnas.builtin.bash_session": _bash_session_handler(),
     }
 
 
@@ -132,6 +142,24 @@ DESCRIPTORS = [
             "type": "object",
             "properties": {"name": {"type": "string"}},
             "required": ["name"],
+        },
+    },
+    {
+        "name": "bash_session",
+        "handler": "harnas.builtin.bash_session",
+        "description": (
+            "Run a command in a persistent bash session. Sessions preserve working directory "
+            "and environment variables across calls. stdin is /dev/null; interactive programs "
+            "cannot receive input."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string"},
+                "command": {"type": "string"},
+                "action": {"type": "string", "enum": ["run", "status", "kill"]},
+                "timeout_ms": {"type": "integer", "minimum": 1},
+            },
         },
     },
 ]
@@ -257,6 +285,281 @@ def load_skill(args: dict[str, Any], *, config: dict[str, Any] | None = None) ->
     return body
 
 
+def _bash_session_handler() -> Callable[..., str]:
+    global _BASH_SESSION_REGISTRY
+    if _BASH_SESSION_REGISTRY is None:
+        _BASH_SESSION_REGISTRY = BashSessionRegistry()
+    return _BASH_SESSION_REGISTRY.handle
+
+
+def bash_session(args: dict[str, Any], *, config: dict[str, Any] | None = None) -> str:
+    return _bash_session_handler()(args, config=config or {})
+
+
+class BashSessionRegistry:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._sessions: dict[str, BashSession] = {}
+
+    def handle(self, args: dict[str, Any], *, config: dict[str, Any] | None = None) -> str:
+        config = config or {}
+        action = str(args.get("action") or "")
+        command = str(args.get("command") or "")
+        if not action and command:
+            action = "run"
+        if not action:
+            action = "status"
+        session_id = str(args.get("session_id") or "")
+        if action == "run":
+            if not command:
+                raise ValueError("missing required argument: command")
+            session = self._session(session_id, config, create=True)
+            return _json_result(session.run(command, _duration_ms(args.get("timeout_ms"))))
+        if action == "status":
+            return _json_result(self._session(session_id, config, create=False).status())
+        if action == "kill":
+            return _json_result(self._session(session_id, config, create=False).kill())
+        raise ValueError(f"unknown bash_session action: {action}")
+
+    def close(self) -> None:
+        with self._lock:
+            sessions = list(self._sessions.values())
+            self._sessions = {}
+        for session in sessions:
+            session.close()
+
+    def _session(self, session_id: str, config: dict[str, Any], *, create: bool) -> "BashSession":
+        with self._lock:
+            if session_id and session_id in self._sessions:
+                return self._sessions[session_id]
+            if session_id and not create:
+                raise ValueError(f"unknown bash_session session_id: {session_id}")
+            if not session_id and not create:
+                raise ValueError("missing required argument: session_id")
+            if not session_id:
+                session_id = "sh_" + uuid.uuid4().hex[:16]
+            session = BashSession(session_id, config)
+            self._sessions[session_id] = session
+            return session
+
+
+class BashCommand:
+    def __init__(self) -> None:
+        self.token = uuid.uuid4().hex[:16]
+        self.stdout_start = 0
+        self.stderr_start = 0
+        self.exit_code: int | None = None
+        self.stdout_done = False
+        self.stderr_done = False
+
+    @property
+    def done(self) -> bool:
+        return self.stdout_done and self.stderr_done
+
+
+class BashSession:
+    def __init__(self, session_id: str, config: dict[str, Any]) -> None:
+        self.id = session_id
+        max_bytes = int(config.get("max_output_bytes") or DEFAULT_BASH_SESSION_MAX_OUTPUT_BYTES)
+        if max_bytes <= 0:
+            max_bytes = DEFAULT_BASH_SESSION_MAX_OUTPUT_BYTES
+        self.stdout = RingBuffer(max_bytes)
+        self.stderr = RingBuffer(max_bytes)
+        self.lock = threading.RLock()
+        self.condition = threading.Condition(self.lock)
+        self.current: BashCommand | None = None
+        self.closed = False
+
+        shell = str(config.get("shell") or "bash")
+        if shell == "bash" and shutil.which("bash") is None:
+            shell = "sh"
+        cwd = str(config.get("cwd") or ".")
+        self.process = subprocess.Popen(
+            [shell],
+            cwd=str(Path(cwd).resolve()),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            start_new_session=True,
+        )
+        assert self.process.stdin is not None
+        assert self.process.stdout is not None
+        assert self.process.stderr is not None
+        self.stdin = self.process.stdin
+        threading.Thread(target=self._read_stdout, args=(self.process.stdout,), daemon=True).start()
+        threading.Thread(target=self._read_stderr, args=(self.process.stderr,), daemon=True).start()
+        threading.Thread(target=self._wait_shell, daemon=True).start()
+
+    def run(self, command: str, timeout: float | None) -> dict[str, Any]:
+        with self.condition:
+            while self.current is not None:
+                self.condition.wait()
+            if self.closed:
+                return self._snapshot("killed", None, None)
+            current = BashCommand()
+            current.stdout_start = self.stdout.offset()
+            current.stderr_start = self.stderr.offset()
+            self.current = current
+            framed = (
+                f"\n{{ {command}\n}} </dev/null; __harnas_status=$?; "
+                f"printf '__HARNAS_ERR_DONE_{current.token}\\n' >&2; "
+                f"printf '__HARNAS_DONE_{current.token}:%s\\n' \"$__harnas_status\"\n"
+            )
+            try:
+                self.stdin.write(framed)
+                self.stdin.flush()
+            except OSError:
+                self.current = None
+                self.condition.notify_all()
+                return self._snapshot("killed", None, current)
+            if timeout is not None:
+                self.condition.wait_for(lambda: current.done, timeout)
+                if not current.done:
+                    return self._snapshot("running", None, current)
+            else:
+                self.condition.wait_for(lambda: current.done)
+            return self._snapshot("completed", current.exit_code, current)
+
+    def status(self) -> dict[str, Any]:
+        with self.condition:
+            if self.current is not None:
+                return self._snapshot("running", None, self.current)
+            if self.closed:
+                return self._snapshot("killed", None, None)
+            return self._snapshot("completed", None, None)
+
+    def kill(self) -> dict[str, Any]:
+        with self.condition:
+            if self.current is None:
+                return self._snapshot("completed", None, None)
+            current = self.current
+            self._killpg(signal.SIGTERM)
+            self.condition.wait_for(lambda: current.done, 3)
+            if not current.done:
+                self._killpg(signal.SIGKILL)
+                self.condition.wait_for(lambda: current.done)
+            self.closed = True
+            return self._snapshot("killed", None, current)
+
+    def close(self) -> None:
+        with self.condition:
+            self.closed = True
+            self._killpg(signal.SIGKILL)
+
+    def _read_stdout(self, stream: Any) -> None:
+        for line in stream:
+            before, matched = self._stdout_sentinel(line)
+            if before:
+                self.stdout.write(_strip_ansi(before))
+            if not matched:
+                self.stdout.write(_strip_ansi(line))
+
+    def _read_stderr(self, stream: Any) -> None:
+        for line in stream:
+            before, matched = self._stderr_sentinel(line)
+            if before:
+                self.stderr.write(_strip_ansi(before))
+            if not matched:
+                self.stderr.write(_strip_ansi(line))
+
+    def _stdout_sentinel(self, line: str) -> tuple[str, bool]:
+        prefix = "__HARNAS_DONE_"
+        index = line.find(prefix)
+        if index < 0:
+            return "", False
+        before = line[:index]
+        parts = line[index:].strip().removeprefix(prefix).split(":", 1)
+        if len(parts) != 2:
+            return "", False
+        with self.condition:
+            if self.current is not None and self.current.token == parts[0]:
+                self.current.exit_code = int(parts[1])
+                self.current.stdout_done = True
+                if self.current.done:
+                    self.current = None
+                self.condition.notify_all()
+        return before, True
+
+    def _stderr_sentinel(self, line: str) -> tuple[str, bool]:
+        prefix = "__HARNAS_ERR_DONE_"
+        index = line.find(prefix)
+        if index < 0:
+            return "", False
+        before = line[:index]
+        token = line[index:].strip().removeprefix(prefix)
+        with self.condition:
+            if self.current is not None and self.current.token == token:
+                self.current.stderr_done = True
+                if self.current.done:
+                    self.current = None
+                self.condition.notify_all()
+        return before, True
+
+    def _wait_shell(self) -> None:
+        code = self.process.wait()
+        with self.condition:
+            self.closed = True
+            if self.current is not None:
+                self.current.exit_code = code
+                self.current.stdout_done = True
+                self.current.stderr_done = True
+                self.current = None
+                self.condition.notify_all()
+
+    def _killpg(self, sig: int) -> None:
+        try:
+            os.killpg(self.process.pid, sig)
+        except OSError:
+            pass
+
+    def _snapshot(self, status: str, exit_code: int | None, command: BashCommand | None) -> dict[str, Any]:
+        return {
+            "session_id": self.id,
+            "status": status,
+            "exit_code": exit_code,
+            "stdout": self.stdout.string(),
+            "stderr": self.stderr.string(),
+            "command_stdout": self.stdout.string_from(command.stdout_start) if command else "",
+            "command_stderr": self.stderr.string_from(command.stderr_start) if command else "",
+            "truncated": self.stdout.truncated or self.stderr.truncated,
+        }
+
+
+class RingBuffer:
+    def __init__(self, max_bytes: int) -> None:
+        self.max = max_bytes
+        self.data = b""
+        self.total = 0
+        self.truncated = False
+        self.lock = threading.Lock()
+
+    def write(self, value: str) -> None:
+        chunk = value.encode("utf-8")
+        with self.lock:
+            self.total += len(chunk)
+            self.data += chunk
+            if self.max > 0 and len(self.data) > self.max:
+                self.truncated = True
+                self.data = self.data[-self.max:]
+
+    def offset(self) -> int:
+        with self.lock:
+            return self.total
+
+    def string(self) -> str:
+        with self.lock:
+            return self.data.decode("utf-8", errors="replace")
+
+    def string_from(self, offset: int) -> str:
+        with self.lock:
+            start_offset = self.total - len(self.data)
+            offset = max(start_offset, min(offset, self.total))
+            start = offset - start_offset
+            return self.data[start:].decode("utf-8", errors="replace")
+
+
 def _require(args: dict[str, Any], key: str) -> str:
     value = args.get(key)
     if value is None or value == "":
@@ -292,3 +595,19 @@ def _format_shell_result(stdout: str, stderr: str, exit_code: int) -> str:
     if stderr:
         parts.append(f"--- stderr ---\n{stderr}")
     return "\n".join(parts)
+
+
+def _duration_ms(value: Any) -> float | None:
+    try:
+        ms = int(value or 0)
+    except (TypeError, ValueError):
+        ms = 0
+    return ms / 1000 if ms > 0 else None
+
+
+def _strip_ansi(value: str) -> str:
+    return ANSI_PATTERN.sub("", value)
+
+
+def _json_result(value: dict[str, Any]) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
