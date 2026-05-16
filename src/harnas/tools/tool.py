@@ -18,6 +18,7 @@ class Tool:
     input_schema: dict[str, Any]
     handler: Callable[..., str]
     config: dict[str, Any] | None = None
+    handler_name: str | None = None
 
     def __call__(self, arguments: dict[str, Any]) -> str:
         if _accepts_config(self.handler):

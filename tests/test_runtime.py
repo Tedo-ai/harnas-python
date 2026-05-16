@@ -1,0 +1,33 @@
+from harnas.runtime import Runtime
+from harnas.session import Session
+
+
+def manifest():
+    return {
+        "harnas_version": "0.1",
+        "name": "runtime-test",
+        "provider": {"kind": "mock", "model": "mock-test", "max_tokens": 128},
+        "tools": [],
+        "strategies": [],
+    }
+
+
+def test_runtime_builds_agent_with_metadata():
+    runtime = Runtime.build(manifest=manifest(), metadata={"trace_id": "tr_1"})
+
+    response = runtime.agent().chat("hi")
+
+    assert response.text == "ok"
+    assert runtime.session.metadata["trace_id"] == "tr_1"
+
+
+def test_runtime_resumes_saved_session(tmp_path):
+    session = Session.create()
+    session.log.append("user_message", {"text": "old"})
+    path = tmp_path / "session.jsonl"
+    session.save(str(path))
+
+    runtime = Runtime.build(manifest=manifest(), session_path=str(path), resume=True)
+
+    assert runtime.session.id == session.id
+    assert [event.payload["text"] for event in runtime.session.log] == ["old"]

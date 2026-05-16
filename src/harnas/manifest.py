@@ -302,6 +302,7 @@ def build_registry(
             input_schema=tool_def["input_schema"],
             handler=tool_handlers[handler_name],
             config=dict(tool_def.get("config", {})),
+            handler_name=handler_name,
         ))
     return registry
 

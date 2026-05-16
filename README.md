@@ -28,6 +28,8 @@ The Python surface includes:
 - Compaction strategies: MarkerTail, TokenMarkerTail, SummaryTail,
   ToolOutputCap
 - Permission strategies: AlwaysAllow, DenyByName, HumanApproval
+- Adopter helper APIs: `harnas.runtime.Runtime`,
+  `harnas.transcript.project`, and `harnas.tools.snapshot`
 
 ## Layout
 
