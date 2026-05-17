@@ -9,14 +9,19 @@ the specification as a whole.
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-05-17
+
 ### Added
 
-- Added experimental `harnas.builtin.bash_session`, following the
-  informative spec convention. It preserves shell working directory and
-  environment changes across named sessions and returns both cumulative
-  transcript fields and command-local stdout/stderr.
+- Promoted `harnas.builtin.bash_session` to the conformable surface. It
+  preserves shell working directory and environment changes across named
+  sessions and returns both cumulative transcript fields and
+  command-local stdout/stderr.
 - Added adopter helper surfaces: `harnas.runtime.Runtime`,
   `harnas.transcript.project`, and `harnas.tools.snapshot`.
+- Conformance now passes 34/34 fixtures, including the four
+  `bash_session` fixtures.
+- Bumped Python package metadata and `harnas.__version__` to 0.11.0.
 
 ## [0.10.0] — 2026-05-10
 
@@ -257,6 +262,7 @@ initial buffered conformance fixtures byte-identically with the Ruby
 reference, while intentionally remaining a conformance-first,
 standard-library-only port rather than a full peer implementation.
 
+[0.11.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.11.0
 [0.10.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.10.0
 [0.9.3]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.9.3
 [0.9.2]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.9.2

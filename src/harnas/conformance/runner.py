@@ -315,11 +315,7 @@ def _build_registry(tools_spec: list[dict[str, Any]]) -> Registry:
     registry = Registry()
     for tool_def in tools_spec:
         handler_name = tool_def["handler"]
-        handler = (
-            _builtin_load_skill_handler()
-            if handler_name == "harnas.builtin.load_skill"
-            else _conformance_stub_handler(handler_name)
-        )
+        handler = _tool_handler(handler_name)
         registry.register(Tool(
             name=tool_def["name"],
             description=tool_def["description"],
@@ -330,10 +326,24 @@ def _build_registry(tools_spec: list[dict[str, Any]]) -> Registry:
     return registry
 
 
+def _tool_handler(handler_name: str):
+    if handler_name == "harnas.builtin.load_skill":
+        return _builtin_load_skill_handler()
+    if handler_name == "harnas.builtin.bash_session":
+        return _builtin_bash_session_handler()
+    return _conformance_stub_handler(handler_name)
+
+
 def _builtin_load_skill_handler():
     from ..tools.builtin import load_skill
 
     return load_skill
+
+
+def _builtin_bash_session_handler():
+    from ..tools.builtin import bash_session
+
+    return bash_session
 
 
 def _conformance_stub_handler(handler_name: str):
@@ -366,6 +376,9 @@ def _resolve_fixture_paths(manifest: dict[str, Any], fixture_dir: str) -> dict[s
         skills_dir = config.get("skills_dir")
         if isinstance(skills_dir, str) and not os.path.isabs(skills_dir):
             config["skills_dir"] = os.path.abspath(os.path.join(fixture_dir, skills_dir))
+        cwd = config.get("cwd")
+        if isinstance(cwd, str) and not os.path.isabs(cwd):
+            config["cwd"] = os.path.abspath(os.path.join(fixture_dir, cwd))
     return updated
 
 
