@@ -28,6 +28,10 @@ STRATEGY_CLASSES = {
     "Compaction::MarkerTail": ("..strategies.compaction.marker_tail", "MarkerTail"),
     "Compaction::ToolOutputCap": ("..strategies.compaction.tool_output_cap", "ToolOutputCap"),
     "Permission::DenyByName": ("..strategies.permission.deny_by_name", "DenyByName"),
+    "sandbox/write": ("..strategies.sandbox.write", "Write"),
+    "guard/repetition": ("..strategies.guard.repetition", "Repetition"),
+    "guard/timeout": ("..strategies.guard.timeout", "Timeout"),
+    "guard/cost_budget": ("..strategies.guard.cost_budget", "CostBudget"),
 }
 
 
@@ -54,14 +58,19 @@ def run(fixture_dir: str) -> Result:
     expected_deltas_path = os.path.join(fixture_dir, "expected-deltas.jsonl")
     expected_strategy_events_path = os.path.join(fixture_dir, "expected-strategy-events.jsonl")
 
-    actual, actual_deltas, actual_strategy_events = _run_agent_with_sidecars(
-        manifest,
-        script,
-        inputs,
-        streaming=streaming,
-        expected_deltas_path=expected_deltas_path,
-        expected_strategy_events_path=expected_strategy_events_path,
-    )
+    cwd = os.getcwd()
+    try:
+        os.chdir(fixture_dir)
+        actual, actual_deltas, actual_strategy_events = _run_agent_with_sidecars(
+            manifest,
+            script,
+            inputs,
+            streaming=streaming,
+            expected_deltas_path=expected_deltas_path,
+            expected_strategy_events_path=expected_strategy_events_path,
+        )
+    finally:
+        os.chdir(cwd)
     diff = _first_mismatch(actual, expected)
     if diff is None and os.path.exists(expected_deltas_path):
         diff = _first_mismatch(actual_deltas, _load_expected(expected_deltas_path))
@@ -329,9 +338,17 @@ def _build_registry(tools_spec: list[dict[str, Any]]) -> Registry:
 def _tool_handler(handler_name: str):
     if handler_name == "harnas.builtin.load_skill":
         return _builtin_load_skill_handler()
+    if handler_name in {"harnas.builtin.write_file", "harnas.builtin.edit_file"}:
+        return _builtin_handler(handler_name)
     if handler_name == "harnas.builtin.bash_session":
         return _builtin_bash_session_handler()
     return _conformance_stub_handler(handler_name)
+
+
+def _builtin_handler(handler_name: str):
+    from ..tools.builtin import handlers
+
+    return handlers()[handler_name]
 
 
 def _builtin_load_skill_handler():

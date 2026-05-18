@@ -74,6 +74,9 @@ class AgentLoop:
             except TurnFailed:
                 reason = "runtime_failed"
                 break
+            if self._terminal_runtime_error():
+                reason = "runtime_failed"
+                break
             if not dispatched:
                 reason = "no_pending_tools"
                 break
@@ -82,6 +85,8 @@ class AgentLoop:
 
     def _run_turn(self) -> str:
         self._session.hooks.invoke("pre_projection", session=self._session)
+        if self._terminal_runtime_error():
+            return "runtime_failed"
         request = self._projection(self._session.log)
         self._session.hooks.invoke("post_projection", session=self._session, request=request)
         if not self._call_provider_with_retry(request):
@@ -211,3 +216,9 @@ class AgentLoop:
             e for e in self._session.log
             if e.type == "tool_use" and e.payload["id"] not in fulfilled
         ]
+
+    def _terminal_runtime_error(self) -> bool:
+        return any(
+            event.type == "runtime_error" and event.payload.get("terminal")
+            for event in self._session.log
+        )

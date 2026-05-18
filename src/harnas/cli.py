@@ -7,6 +7,7 @@ import os
 import json
 import sys
 from datetime import datetime, timezone
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -21,8 +22,11 @@ from .tools.registry import Registry
 from .tools.tool import Tool
 
 EXIT_SUCCESS = 0
-EXIT_USAGE = 1
-EXIT_PROVIDER_ERROR = 2
+EXIT_AGENT_ERROR = 1
+EXIT_USAGE = 2
+EXIT_APPROVAL_REJECTED = 3
+EXIT_SANDBOX_VIOLATION = 4
+EXIT_PROVIDER_ERROR = EXIT_AGENT_ERROR
 EXIT_DIFFERENT = 3
 
 
@@ -83,6 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
     run = subparsers.add_parser("run", help="send one input to a manifest-backed agent")
     run.add_argument("manifest")
     run.add_argument("--input", required=True)
+    run.add_argument("--output-format", choices=["text", "ndjson"], default="text")
     add_provider_model_options(run)
 
     return parser
@@ -131,12 +136,25 @@ def command_chat(args: argparse.Namespace) -> int:
 
 def command_run(args: argparse.Namespace) -> int:
     agent = build_agent(args.manifest, provider=args.provider, model=args.model)
+    started = time.monotonic()
     response = agent.chat(args.input)
     save_session(agent)
+    runtime_error = terminal_runtime_error(agent)
     error = terminal_provider_error(agent)
+    if args.output_format == "ndjson":
+        write_ndjson(agent, started=started, status=ndjson_status(error, runtime_error))
+        return ndjson_exit(error, runtime_error)
+    if runtime_error is not None and runtime_error.payload.get("reason") == "sandbox_violation_limit":
+        print(f"sandbox violation: {runtime_error.payload.get('message')}", file=sys.stderr)
+        return EXIT_SANDBOX_VIOLATION
     if error is not None:
         print(f"provider error: {format_provider_error(error)}", file=sys.stderr)
+        flush_assistant_messages(agent)
         return EXIT_PROVIDER_ERROR
+    if runtime_error is not None:
+        print(f"runtime error: {runtime_error.payload.get('message')}", file=sys.stderr)
+        flush_assistant_messages(agent)
+        return EXIT_AGENT_ERROR
     print(response.text)
     return EXIT_SUCCESS
 
@@ -190,6 +208,16 @@ def terminal_provider_error(agent: Agent) -> Any | None:
     return None
 
 
+def terminal_runtime_error(agent: Agent) -> Any | None:
+    return next(
+        (
+            event for event in agent.log.reverse_each()
+            if event.type == "runtime_error" and event.payload.get("terminal")
+        ),
+        None,
+    )
+
+
 def format_provider_error(error_event: Any) -> str:
     payload = error_event.payload
     message = str(payload.get("message") or "")
@@ -205,6 +233,59 @@ def save_session(agent: Agent) -> Path:
     agent.session.save(str(path))
     print(f"saved: {path}", file=sys.stderr)
     return path
+
+
+def flush_assistant_messages(agent: Agent) -> None:
+    messages = [event for event in agent.log if event.type == "assistant_message"]
+    for index, event in enumerate(messages):
+        if index:
+            print("---")
+        print(event.payload.get("text", ""))
+
+
+def write_ndjson(agent: Agent, *, started: float, status: str) -> None:
+    for event in agent.log:
+        ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        if event.type == "tool_use":
+            print(json.dumps({"type": "tool_call", "tool": event.payload.get("name"), "input": event.payload.get("arguments"), "ts": ts}, ensure_ascii=False, separators=(",", ":")))
+        elif event.type == "tool_result":
+            print(json.dumps({"type": "tool_result", "status": "error" if event.payload.get("error") else "success", "message": event.payload.get("error") or event.payload.get("output"), "ts": ts}, ensure_ascii=False, separators=(",", ":")))
+        elif event.type == "assistant_message":
+            for block in event.payload.get("reasoning") or []:
+                content = str(block.get("text") or "")
+                if content:
+                    print(json.dumps({"type": "thinking", "content": content, "ts": ts}, ensure_ascii=False, separators=(",", ":")))
+            if event.payload.get("text"):
+                print(json.dumps({"type": "agent_text", "content": event.payload.get("text"), "ts": ts}, ensure_ascii=False, separators=(",", ":")))
+        elif event.type == "provider_error":
+            print(json.dumps({"type": "provider_error", "message": event.payload.get("message"), "attempt": event.payload.get("attempt"), "ts": ts}, ensure_ascii=False, separators=(",", ":")))
+        elif event.type == "runtime_error":
+            print(json.dumps({"type": "error", "reason": event.payload.get("reason"), "message": event.payload.get("message"), "ts": ts}, ensure_ascii=False, separators=(",", ":")))
+    usage = {"input": 0, "output": 0}
+    for event in agent.log:
+        if event.type == "assistant_message":
+            payload = event.payload.get("usage") or {}
+            usage["input"] += int(payload.get("input_tokens") or 0)
+            usage["output"] += int(payload.get("output_tokens") or 0)
+    print(json.dumps({"type": "done", "status": status, "tokens_used": usage, "duration_ms": int((time.monotonic() - started) * 1000), "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")}, ensure_ascii=False, separators=(",", ":")))
+
+
+def ndjson_status(provider_error: Any | None, runtime_error: Any | None) -> str:
+    if runtime_error is not None and runtime_error.payload.get("reason") == "sandbox_violation_limit":
+        return "sandbox_violation"
+    if runtime_error is not None:
+        return str(runtime_error.payload.get("reason") or "failed")
+    if provider_error is not None:
+        return "failed"
+    return "completed"
+
+
+def ndjson_exit(provider_error: Any | None, runtime_error: Any | None) -> int:
+    if runtime_error is not None and runtime_error.payload.get("reason") == "sandbox_violation_limit":
+        return EXIT_SANDBOX_VIOLATION
+    if provider_error is not None or runtime_error is not None:
+        return EXIT_AGENT_ERROR
+    return EXIT_SUCCESS
 
 
 def run_path(name: str) -> Path:

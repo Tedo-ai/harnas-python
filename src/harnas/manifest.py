@@ -247,7 +247,7 @@ def _validate_strategies(strategies: Any) -> None:
         _reject_unknown(strategy, {"name", "config", "on_error"}, f"strategies[{index}]")
         _require(strategy, ["name"], f"strategies[{index}]")
         name = strategy["name"]
-        if "::" not in name:
+        if "::" not in name and "/" not in name:
             raise ValidationError(f"strategy name {name!r} is not canonical")
         _validate_on_error(strategy.get("on_error", "isolate"), f"strategies[{index}].on_error")
 
@@ -421,6 +421,10 @@ STRATEGY_CLASSES = {
     "Permission::DenyByName": ("harnas.strategies.permission.deny_by_name", "DenyByName"),
     "Permission::AlwaysAllow": ("harnas.strategies.permission.always_allow", "AlwaysAllow"),
     "Permission::HumanApproval": ("harnas.strategies.permission.human_approval", "HumanApproval"),
+    "sandbox/write": ("harnas.strategies.sandbox.write", "Write"),
+    "guard/repetition": ("harnas.strategies.guard.repetition", "Repetition"),
+    "guard/timeout": ("harnas.strategies.guard.timeout", "Timeout"),
+    "guard/cost_budget": ("harnas.strategies.guard.cost_budget", "CostBudget"),
 }
 CALLABLE_CONFIG_FIELDS = {"Permission::HumanApproval": ["prompt"]}
 IMPLICIT_BUNDLE_FIELDS = {"Compaction::SummaryTail": ["projection", "provider", "ingestor"]}
