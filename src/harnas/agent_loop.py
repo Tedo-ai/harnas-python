@@ -178,12 +178,14 @@ class AgentLoop:
                 None,
             )
             if denied is not None:
+                reason = denied.get("reason") or "no reason given"
                 self._session.log.append(
                     type="tool_result",
                     payload={
                         "tool_use_id": tu.payload["id"],
                         "output": None,
-                        "error": f"denied by hook: {denied.get('reason') or 'no reason given'}",
+                        "error": f"denied by hook: {reason}",
+                        "approval": {"decision": "rejected", "reason": reason},
                     },
                 )
             else:

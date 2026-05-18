@@ -7,7 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and Harnas adheres to [Semantic Versioning](https://semver.org/) on
 the specification as a whole.
 
-## [Unreleased]
+## [0.13.0] — 2026-05-18
+
+### Added
+
+- Added `guard/health`, a pre-provider health-check strategy.
+- Extended `guard/repetition` to detect repeated approval rejections.
+- Added Ollama buffered and streaming providers using Ollama's
+  OpenAI-compatible `/v1/chat/completions` endpoint, plus
+  `bin/smoke-ollama`.
 
 ## [0.12.0] — 2026-05-18
 
@@ -273,6 +281,7 @@ initial buffered conformance fixtures byte-identically with the Ruby
 reference, while intentionally remaining a conformance-first,
 standard-library-only port rather than a full peer implementation.
 
+[0.13.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.13.0
 [0.12.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.12.0
 [0.11.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.11.0
 [0.10.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.10.0

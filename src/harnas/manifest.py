@@ -21,7 +21,7 @@ from .tools.runner import Runner
 from .tools.tool import Tool
 
 SUPPORTED_VERSIONS = {"0.1"}
-PROVIDER_KINDS = {"anthropic", "openai", "gemini", "mock"}
+PROVIDER_KINDS = {"anthropic", "openai", "gemini", "ollama", "mock"}
 
 
 class ManifestError(Exception):
@@ -206,7 +206,7 @@ def validate(manifest: dict[str, Any]) -> None:
 def _validate_provider(provider: Any) -> None:
     if not isinstance(provider, dict):
         raise ValidationError("provider must be an object")
-    _reject_unknown(provider, {"kind", "model", "max_tokens", "thinking_budget"}, "provider")
+    _reject_unknown(provider, {"kind", "model", "max_tokens", "thinking_budget", "base_url"}, "provider")
     _require(provider, ["kind", "max_tokens"], "provider")
     if provider["kind"] not in PROVIDER_KINDS:
         raise UnknownProviderError(f"unknown provider kind: {provider['kind']!r}")
@@ -322,8 +322,8 @@ def build_provider(
 ) -> dict[str, Any]:
     kind = provider_spec["kind"]
     projection = projection_for(provider_spec, registry, system)
-    provider = provider_for(kind, api_keys, providers)
-    stream_provider = stream_provider_for(kind, api_keys, stream_providers)
+    provider = provider_for(provider_spec, api_keys, providers)
+    stream_provider = stream_provider_for(provider_spec, api_keys, stream_providers)
     ingestor = ingestor_for(kind)
     return {
         "projection": projection,
@@ -342,7 +342,7 @@ def projection_for(provider: dict[str, Any], registry: Registry | None, system: 
             registry=registry,
             system=system,
         )
-    if kind == "openai":
+    if kind in ("openai", "ollama"):
         return OpenAIProjection(model=provider["model"], registry=registry, system=system)
     if kind == "gemini":
         return GeminiProjection(
@@ -357,19 +357,23 @@ def projection_for(provider: dict[str, Any], registry: Registry | None, system: 
 def ingestor_for(kind: str):
     if kind in ("mock", "anthropic"):
         return AnthropicIngestor()
-    if kind == "openai":
+    if kind in ("openai", "ollama"):
         return OpenAIIngestor()
     if kind == "gemini":
         return GeminiIngestor()
     raise UnknownProviderError(f"unknown provider kind: {kind!r}")
 
 
-def provider_for(kind: str, api_keys: dict[str, str | None], providers: dict[str, Callable[..., Any]]):
+def provider_for(provider_spec: dict[str, Any], api_keys: dict[str, str | None], providers: dict[str, Callable[..., Any]]):
+    kind = provider_spec["kind"]
     if kind in providers:
         return providers[kind]
     if kind == "mock":
         from .providers.mock import MockProvider
         return MockProvider()
+    if kind == "ollama":
+        from .providers.ollama import OllamaProvider
+        return OllamaProvider(base_url=provider_spec.get("base_url"))
     key = api_key_for(kind, api_keys)
     if not key:
         raise ManifestError(f"api_keys[{kind!r}] is required for provider {kind}")
@@ -386,14 +390,18 @@ def provider_for(kind: str, api_keys: dict[str, str | None], providers: dict[str
 
 
 def stream_provider_for(
-    kind: str,
+    provider_spec: dict[str, Any],
     api_keys: dict[str, str | None],
     stream_providers: dict[str, Callable[..., Any]],
 ):
+    kind = provider_spec["kind"]
     if kind in stream_providers:
         return stream_providers[kind]
     if kind == "mock":
         return None
+    if kind == "ollama":
+        from .providers.ollama_stream import OllamaStreamProvider
+        return OllamaStreamProvider(base_url=provider_spec.get("base_url"))
     key = api_key_for(kind, api_keys)
     if not key:
         raise ManifestError(f"api_keys[{kind!r}] is required for stream provider {kind}")
@@ -424,6 +432,7 @@ STRATEGY_CLASSES = {
     "sandbox/write": ("harnas.strategies.sandbox.write", "Write"),
     "guard/repetition": ("harnas.strategies.guard.repetition", "Repetition"),
     "guard/timeout": ("harnas.strategies.guard.timeout", "Timeout"),
+    "guard/health": ("harnas.strategies.guard.health", "Health"),
     "guard/cost_budget": ("harnas.strategies.guard.cost_budget", "CostBudget"),
 }
 CALLABLE_CONFIG_FIELDS = {"Permission::HumanApproval": ["prompt"]}

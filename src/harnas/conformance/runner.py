@@ -31,6 +31,7 @@ STRATEGY_CLASSES = {
     "sandbox/write": ("..strategies.sandbox.write", "Write"),
     "guard/repetition": ("..strategies.guard.repetition", "Repetition"),
     "guard/timeout": ("..strategies.guard.timeout", "Timeout"),
+    "guard/health": ("..strategies.guard.health", "Health"),
     "guard/cost_budget": ("..strategies.guard.cost_budget", "CostBudget"),
 }
 

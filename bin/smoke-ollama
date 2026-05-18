@@ -1,0 +1,2 @@
+#!/usr/bin/env sh
+PYTHONPATH=src exec python3 -m harnas.smoke --provider ollama "$@"

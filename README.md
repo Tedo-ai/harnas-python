@@ -1,13 +1,13 @@
 # harnas-python
 
 Python implementation of [Harnas](https://github.com/Tedo-ai/harnas) —
-a specification for LLM agent harnesses. Passes 39/39 conformance
+a specification for LLM agent harnesses. Passes 41/41 conformance
 fixtures against the
 [Ruby reference](https://github.com/Tedo-ai/harnas-ruby), participates
 in the 3x3 Session JSONL round-trip matrix, and ships live providers,
 tools, strategies, middleware, and a manifest-driven CLI.
 
-**Version 0.12.0** (2026-05-18). Tracks Harnas spec 0.12.0.
+**Version 0.13.0** (2026-05-18). Tracks Harnas spec 0.13.0.
 
 ## Scope
 
@@ -18,7 +18,7 @@ outputs remain byte-identical across Ruby, Python, and Go.
 
 The Python surface includes:
 
-- Live Anthropic, OpenAI, and Gemini providers, buffered and streaming
+- Live Anthropic, OpenAI, Gemini, and local Ollama providers, buffered and streaming
 - Manifest loading with provider/model overrides and env API keys
 - `harnas chat` / `harnas run` plus persisted-Session operator commands
 - RetryPolicy-backed provider calls and provider_error Events
@@ -44,8 +44,8 @@ src/harnas/
 ├── observation.py        — Observation bus + DeltaLogger
 ├── skills.py             — skills index + frontmatter helpers
 ├── agent_loop.py         — Log → Projection → Provider → Ingestor loop
-├── projections/          — anthropic, openai, gemini
-├── ingestors/            — anthropic, openai, gemini
+├── projections/          — anthropic, openai-compatible, gemini
+├── ingestors/            — anthropic, openai-compatible, gemini
 ├── providers/            — live + streaming provider clients
 ├── tools/                — Tool, Registry, Runner, builtin tools, middleware
 ├── strategies/compaction — MarkerTail, TokenMarkerTail, SummaryTail, ToolOutputCap
@@ -111,7 +111,7 @@ python3 bin/harnas project session.jsonl --manifest manifest.json [--from-seq N]
 
 `project` renders the provider request body from a saved Log slice
 without making a provider call. It supports the conformance-facing
-Anthropic, OpenAI, and Gemini projections.
+Anthropic, OpenAI-compatible, and Gemini projections.
 
 The live smoke scripts exercise both buffered and streaming providers:
 
@@ -119,6 +119,7 @@ The live smoke scripts exercise both buffered and streaming providers:
 ANTHROPIC_API_KEY=... bin/smoke-anthropic "say hello in one word"
 OPENAI_API_KEY=... bin/smoke-openai "say hello in one word"
 GEMINI_API_KEY=... bin/smoke-gemini "say hello in one word"
+bin/smoke-ollama "say hello in one word"  # skips if Ollama is not running
 ```
 
 ## Why Python (and Ruby first)?

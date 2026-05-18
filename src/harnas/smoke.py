@@ -13,11 +13,13 @@ from .providers.gemini import GeminiProvider
 from .providers.gemini_stream import GeminiStreamProvider
 from .providers.openai import OpenAIProvider
 from .providers.openai_stream import OpenAIStreamProvider
+from .providers.ollama import OllamaProvider
+from .providers.ollama_stream import OllamaStreamProvider
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="smoke")
-    parser.add_argument("--provider", required=True, choices=["anthropic", "openai", "gemini"])
+    parser.add_argument("--provider", required=True, choices=["anthropic", "openai", "gemini", "ollama"])
     parser.add_argument("--model")
     parser.add_argument("--stream-only", action="store_true")
     parser.add_argument("--buffered-only", action="store_true")
@@ -32,19 +34,25 @@ def main(argv: list[str] | None = None) -> int:
     prompt = " ".join(args.prompt)
     model = resolve_model(provider, args.model)
     api_key = os.environ.get(f"{provider.upper()}_API_KEY")
-    if not api_key:
+    if provider != "ollama" and not api_key:
         print(f"error: {provider.upper()}_API_KEY is not set", file=sys.stderr)
         return 1
     request = request_for(provider, model, prompt)
 
-    if not args.stream_only:
-        text = call_buffered(provider, api_key, request)
-        require_text("buffered", text)
-        print(f"[buffered] {text}")
-    if not args.buffered_only:
-        text = call_streaming(provider, api_key, request)
-        require_text("streaming", text)
-        print(f"[streaming] {text}")
+    try:
+        if not args.stream_only:
+            text = call_buffered(provider, api_key or "", request)
+            require_text("buffered", text)
+            print(f"[buffered] {text}")
+        if not args.buffered_only:
+            text = call_streaming(provider, api_key or "", request)
+            require_text("streaming", text)
+            print(f"[streaming] {text}")
+    except Exception as error:
+        if provider == "ollama":
+            print(f"skip: Ollama is not reachable ({error})", file=sys.stderr)
+            return 0
+        raise
     return 0
 
 
@@ -58,11 +66,12 @@ def resolve_model(provider: str, explicit: str | None) -> str:
         "anthropic": "claude-sonnet-4-5",
         "openai": "gpt-5.4-mini",
         "gemini": "gemini-flash-latest",
+        "ollama": "llama3.2",
     }[provider]
 
 
 def request_for(provider: str, model: str, prompt: str) -> dict[str, Any]:
-    if provider == "openai":
+    if provider in ("openai", "ollama"):
         return {"model": model, "messages": [{"role": "user", "content": prompt}]}
     if provider == "gemini":
         return {
@@ -84,6 +93,9 @@ def call_buffered(provider: str, api_key: str, request: dict[str, Any]) -> str:
     if provider == "openai":
         response = OpenAIProvider(api_key)(request)
         return _string(_first(response.get("choices")).get("message", {}).get("content"))
+    if provider == "ollama":
+        response = OllamaProvider()(request)
+        return _string(_first(response.get("choices")).get("message", {}).get("content"))
     response = GeminiProvider(api_key)(request)
     candidate = _first(response.get("candidates"))
     return _string(_first(candidate.get("content", {}).get("parts")).get("text"))
@@ -101,6 +113,8 @@ def call_streaming(provider: str, api_key: str, request: dict[str, Any]) -> str:
         AnthropicStreamProvider(api_key)(request, emit)
     elif provider == "openai":
         OpenAIStreamProvider(api_key)(request, emit)
+    elif provider == "ollama":
+        OllamaStreamProvider()(request, emit)
     else:
         GeminiStreamProvider(api_key)(request, emit)
     return final
