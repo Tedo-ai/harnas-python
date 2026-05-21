@@ -35,3 +35,31 @@ def test_runtime_resumes_saved_session(tmp_path):
 
 def test_default_attachment_root_uses_session_path():
     assert default_attachment_root("/tmp/run.jsonl") == "/tmp/run.attachments"
+
+
+def test_session_delegation_metadata_round_trips(tmp_path):
+    session = Session(
+        id="ses_child",
+        metadata={"label": "child"},
+        parent_session_id="ses_parent",
+        root_session_id="ses_root",
+        spawn_id="spn_1",
+        spawned_by_event_id="evt_2_abc",
+        delegation_chain=[
+            {"session_id": "ses_root", "spawn_id": None},
+            {"session_id": "ses_parent", "spawn_id": "spn_parent"},
+        ],
+    )
+    path = tmp_path / "session.jsonl"
+    session.save(str(path))
+
+    loaded = Session.load(str(path))
+
+    assert loaded.parent_session_id == "ses_parent"
+    assert loaded.root_session_id == "ses_root"
+    assert loaded.spawn_id == "spn_1"
+    assert loaded.spawned_by_event_id == "evt_2_abc"
+    assert loaded.delegation_chain[-1] == {
+        "session_id": "ses_parent",
+        "spawn_id": "spn_parent",
+    }

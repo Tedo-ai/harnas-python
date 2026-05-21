@@ -25,6 +25,11 @@ class Session:
     id: str
     log: Log = field(default_factory=Log)
     metadata: dict[str, Any] = field(default_factory=dict)
+    parent_session_id: str | None = None
+    root_session_id: str | None = None
+    spawn_id: str | None = None
+    spawned_by_event_id: str | None = None
+    delegation_chain: list[dict[str, Any]] = field(default_factory=list)
     hooks: Hooks = field(default_factory=Hooks)
     observation: Observation = field(default_factory=Observation)
 
@@ -32,12 +37,26 @@ class Session:
         self.log.observation = self.observation
 
     @classmethod
-    def create(cls, metadata: dict[str, Any] | None = None) -> "Session":
+    def create(
+        cls,
+        metadata: dict[str, Any] | None = None,
+        *,
+        parent_session_id: str | None = None,
+        root_session_id: str | None = None,
+        spawn_id: str | None = None,
+        spawned_by_event_id: str | None = None,
+        delegation_chain: list[dict[str, Any]] | None = None,
+    ) -> "Session":
         observation = Observation()
         return cls(
             id=f"ses_{uuid.uuid4()}",
             log=Log(observation=observation),
             metadata=metadata or {},
+            parent_session_id=parent_session_id,
+            root_session_id=root_session_id,
+            spawn_id=spawn_id,
+            spawned_by_event_id=spawned_by_event_id,
+            delegation_chain=delegation_chain or [],
             observation=observation,
         )
 
@@ -54,18 +73,35 @@ class Session:
             **self.metadata,
             "forked_from": self.id,
             "forked_at_seq": at_seq,
-        })
+        },
+            parent_session_id=self.parent_session_id,
+            root_session_id=self.root_session_id,
+            spawn_id=self.spawn_id,
+            spawned_by_event_id=self.spawned_by_event_id,
+            delegation_chain=[dict(item) for item in self.delegation_chain],
+        )
         for event in list(self.log)[: at_seq + 1]:
             forked.log._events.append(event)
         return forked
 
     def save(self, path: str) -> "Session":
         with open(path, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(json.dumps({
+            header = {
                 SESSION_HEADER_KEY: True,
                 "id": self.id,
                 "metadata": self.metadata,
-            }, separators=(",", ":"), ensure_ascii=False))
+            }
+            if self.parent_session_id is not None:
+                header["parent_session_id"] = self.parent_session_id
+            if self.root_session_id is not None:
+                header["root_session_id"] = self.root_session_id
+            if self.spawn_id is not None:
+                header["spawn_id"] = self.spawn_id
+            if self.spawned_by_event_id is not None:
+                header["spawned_by_event_id"] = self.spawned_by_event_id
+            if self.delegation_chain:
+                header["delegation_chain"] = self.delegation_chain
+            fh.write(json.dumps(header, separators=(",", ":"), ensure_ascii=False))
             fh.write("\n")
             for event in self.log:
                 fh.write(json.dumps({
@@ -104,5 +140,10 @@ class Session:
             id=header["id"],
             log=log,
             metadata=header.get("metadata", {}),
+            parent_session_id=header.get("parent_session_id"),
+            root_session_id=header.get("root_session_id"),
+            spawn_id=header.get("spawn_id"),
+            spawned_by_event_id=header.get("spawned_by_event_id"),
+            delegation_chain=header.get("delegation_chain") or [],
             observation=observation,
         )
