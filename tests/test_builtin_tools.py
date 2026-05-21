@@ -18,6 +18,7 @@ def test_builtin_handlers_contains_canonical_tools():
         "harnas.builtin.grep",
         "harnas.builtin.run_shell",
         "harnas.builtin.fetch_url",
+        "harnas.builtin.spawn_agent",
         "harnas.builtin.load_skill",
         "harnas.builtin.bash_session",
     ]:
@@ -26,7 +27,7 @@ def test_builtin_handlers_contains_canonical_tools():
 
 def test_builtin_descriptors_expose_canonical_tool_schemas():
     descriptors = builtin.descriptors()
-    assert len(descriptors) == 10
+    assert len(descriptors) == 11
     by_name = {descriptor["name"]: descriptor for descriptor in descriptors}
     for name in [
         "read_file",
@@ -37,6 +38,7 @@ def test_builtin_descriptors_expose_canonical_tool_schemas():
         "grep",
         "run_shell",
         "fetch_url",
+        "spawn_agent",
         "load_skill",
         "bash_session",
     ]:

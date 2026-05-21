@@ -37,6 +37,7 @@ def handlers() -> dict[str, Callable[[dict[str, Any]], str]]:
         "harnas.builtin.grep": grep,
         "harnas.builtin.run_shell": run_shell,
         "harnas.builtin.fetch_url": fetch_url,
+        "harnas.builtin.spawn_agent": spawn_agent,
         "harnas.builtin.load_skill": load_skill,
         "harnas.builtin.bash_session": _bash_session_handler(),
     }
@@ -184,6 +185,24 @@ DESCRIPTORS = [
             },
         },
     },
+    {
+        "name": "spawn_agent",
+        "handler": "harnas.builtin.spawn_agent",
+        "description": (
+            "Create a child agent Session receipt for a delegated task. Products run "
+            "and join the child according to their supervisor policy."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task": {"type": "string"},
+                "label": {"type": "string"},
+                "role": {"type": "string"},
+                "tools_deny": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["task"],
+        },
+    },
 ]
 
 
@@ -211,6 +230,10 @@ def write_file(args: dict[str, Any]) -> str:
     content = _require(args, "content")
     Path(path).write_text(content, encoding="utf-8")
     return f"wrote {len(content.encode('utf-8'))} bytes to {path}"
+
+
+def spawn_agent(args: dict[str, Any]) -> str:
+    raise RuntimeError("spawn_agent is handled by harnas.tools.runner.Runner")
 
 
 def edit_file(args: dict[str, Any]) -> str:
