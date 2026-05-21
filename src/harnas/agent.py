@@ -46,7 +46,7 @@ class Agent:
         source: str | dict[str, Any],
         *,
         api_keys: dict[str, str | None] | None = None,
-        tool_handlers: dict[str, Callable[[dict[str, Any]], str]] | None = None,
+        tool_handlers: dict[str, Callable[..., str]] | None = None,
         strategy_handlers: dict[str, Callable[..., Any]] | None = None,
         providers: dict[str, Callable[..., Any]] | None = None,
         stream_providers: dict[str, Callable[..., Any]] | None = None,

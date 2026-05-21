@@ -136,7 +136,7 @@ class HookInstallation:
 def load(
     source: str | Path | dict[str, Any],
     *,
-    tool_handlers: dict[str, Callable[[dict[str, Any]], str]] | None = None,
+    tool_handlers: dict[str, Callable[..., str]] | None = None,
     strategy_handlers: dict[str, Callable[..., Any]] | None = None,
     api_keys: dict[str, str | None] | None = None,
     providers: dict[str, Callable[..., Any]] | None = None,
@@ -289,7 +289,7 @@ def _require(value: dict[str, Any], keys: list[str], label: str) -> None:
 
 def build_registry(
     tools_spec: list[dict[str, Any]],
-    tool_handlers: dict[str, Callable[[dict[str, Any]], str]],
+    tool_handlers: dict[str, Callable[..., str]],
 ) -> Registry:
     registry = Registry()
     for tool_def in tools_spec:

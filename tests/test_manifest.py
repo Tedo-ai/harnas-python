@@ -74,3 +74,38 @@ def test_load_manifest_rejects_unresolved_tool_handler():
 
     with pytest.raises(manifest.UnresolvedHandlerError):
         manifest.load(payload)
+
+
+def test_tool_handler_receives_manifest_config_when_supported():
+    seen = {}
+    payload = basic_manifest(tools=[{
+        "name": "echo",
+        "handler": "test.configured",
+        "description": "Echo configured text.",
+        "input_schema": {"type": "object"},
+        "config": {"prefix": "cfg"},
+    }])
+
+    loaded = manifest.load(payload, tool_handlers={
+        "test.configured": lambda args, config: seen.update({"args": args, "config": config}) or "ok"
+    })
+
+    tool = loaded.registry["echo"]
+    assert tool({"text": "hello"}) == "ok"
+    assert seen == {"args": {"text": "hello"}, "config": {"prefix": "cfg"}}
+
+
+def test_single_argument_tool_handlers_continue_to_work():
+    payload = basic_manifest(tools=[{
+        "name": "echo",
+        "handler": "test.echo",
+        "description": "Echo text.",
+        "input_schema": {"type": "object"},
+        "config": {"ignored": True},
+    }])
+
+    loaded = manifest.load(payload, tool_handlers={
+        "test.echo": lambda args: args["text"]
+    })
+
+    assert loaded.registry["echo"]({"text": "hello"}) == "hello"

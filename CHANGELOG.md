@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and Harnas adheres to [Semantic Versioning](https://semver.org/) on
 the specification as a whole.
 
+## [Unreleased]
+
+### Added
+
+- Tool handlers may now optionally accept a second `config` argument
+  carrying the tool's manifest config map. Existing single-argument
+  handlers continue to work unchanged.
+
 ## [0.14.1] — 2026-05-21
 
 ### Added
