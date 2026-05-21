@@ -6,6 +6,7 @@ from harnas.strategies.compaction.summary_tail import SummaryTail
 from harnas.strategies.compaction.token_marker_tail import TokenMarkerTail
 from harnas.strategies.permission.always_allow import AlwaysAllow
 from harnas.strategies.permission.human_approval import HumanApproval
+from harnas.strategies.sandbox.network import Network
 
 
 def test_token_marker_tail_compacts_when_token_estimate_exceeds_threshold():
@@ -81,3 +82,23 @@ def test_human_approval_allows_and_denies():
     assert denied.hooks.invoke("pre_tool_use", tool_use=tool_use) == [
         {"allow": False, "reason": "human declined"}
     ]
+
+
+def test_network_sandbox_allows_and_denies_hosts():
+    allowed = Session.create()
+    Network.install(allowed, allow=["api.github.com"], deny=[])
+    tool_use = allowed.log.append(
+        "tool_use",
+        {"id": "t1", "name": "fetch_url", "arguments": {"url": "https://api.github.com:443/repos/foo"}},
+    )
+    assert allowed.hooks.invoke("pre_tool_use", session=allowed, tool_use=tool_use) == [{"allow": True}]
+
+    denied = Session.create()
+    Network.install(denied, allow=["api.github.com"], deny=[])
+    tool_use = denied.log.append(
+        "tool_use",
+        {"id": "t1", "name": "fetch_url", "arguments": {"url": "https://evil.example.com/"}},
+    )
+    decisions = denied.hooks.invoke("pre_tool_use", session=denied, tool_use=tool_use)
+    assert decisions[0]["allow"] is False
+    assert "evil.example.com" in decisions[0]["reason"]

@@ -51,9 +51,26 @@ def test_builtin_read_write_edit_file(tmp_path):
     result = builtin.write_file({"path": str(path), "content": "alpha\nbravo\n"})
 
     assert "12 bytes" in result
-    assert builtin.read_file({"path": str(path)}) == "alpha\nbravo\n"
+    assert builtin.read_file({"path": str(path)}) == "     1\talpha\n     2\tbravo\n"
     builtin.edit_file({"path": str(path), "old_string": "bravo", "new_string": "BRAVO"})
     assert path.read_text(encoding="utf-8") == "alpha\nBRAVO\n"
+
+
+def test_builtin_read_file_offset_limit_and_binary_guard(tmp_path):
+    path = tmp_path / "note.txt"
+    path.write_text("one\ntwo\nthree\n", encoding="utf-8")
+
+    assert builtin.read_file({"path": str(path), "offset": 1, "limit": 1}) == (
+        "     2\ttwo\n... [file has 3 total lines; showing 1–2]\n"
+    )
+    assert builtin.read_file({"path": str(path), "offset": 10}) == (
+        "... [file has 3 total lines; offset 10 is past EOF]\n"
+    )
+
+    binary = tmp_path / "data.bin"
+    binary.write_bytes(b"abc\0def")
+    with pytest.raises(ValueError, match="Cannot read binary file"):
+        builtin.read_file({"path": str(binary)})
 
 
 def test_builtin_list_glob_and_grep(tmp_path):
@@ -118,6 +135,34 @@ def test_builtin_bash_session_reports_command_local_output(tmp_path):
         assert second["command_stdout"] == ""
         assert second["stderr"] == "second"
         assert second["command_stderr"] == "second"
+    finally:
+        registry.close()
+
+
+def test_builtin_bash_session_per_command_env_does_not_persist(tmp_path):
+    registry = builtin.BashSessionRegistry()
+    try:
+        first = _bash_result(registry.handle({
+            "session_id": "s1",
+            "command": "echo $MYVAR",
+            "env": {"MYVAR": "hello $USER"},
+        }, config={"cwd": str(tmp_path), "max_output_bytes": 4096}))
+
+        assert first["command_stdout"] == "hello $USER\n"
+
+        second = _bash_result(registry.handle({
+            "session_id": "s1",
+            "command": "echo $MYVAR",
+        }, config={"cwd": str(tmp_path), "max_output_bytes": 4096}))
+
+        assert second["command_stdout"] == "\n"
+
+        with pytest.raises(ValueError, match="invalid bash_session env key"):
+            registry.handle({
+                "session_id": "s1",
+                "command": "true",
+                "env": {"BAD KEY": "value"},
+            }, config={"cwd": str(tmp_path)})
     finally:
         registry.close()
 

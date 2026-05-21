@@ -29,6 +29,7 @@ STRATEGY_CLASSES = {
     "Compaction::ToolOutputCap": ("..strategies.compaction.tool_output_cap", "ToolOutputCap"),
     "Permission::DenyByName": ("..strategies.permission.deny_by_name", "DenyByName"),
     "sandbox/write": ("..strategies.sandbox.write", "Write"),
+    "sandbox/network": ("..strategies.sandbox.network", "Network"),
     "guard/repetition": ("..strategies.guard.repetition", "Repetition"),
     "guard/timeout": ("..strategies.guard.timeout", "Timeout"),
     "guard/health": ("..strategies.guard.health", "Health"),
@@ -339,7 +340,11 @@ def _build_registry(tools_spec: list[dict[str, Any]]) -> Registry:
 def _tool_handler(handler_name: str):
     if handler_name == "harnas.builtin.load_skill":
         return _builtin_load_skill_handler()
-    if handler_name in {"harnas.builtin.write_file", "harnas.builtin.edit_file"}:
+    if handler_name in {
+        "harnas.builtin.read_file",
+        "harnas.builtin.write_file",
+        "harnas.builtin.edit_file",
+    }:
         return _builtin_handler(handler_name)
     if handler_name == "harnas.builtin.bash_session":
         return _builtin_bash_session_handler()

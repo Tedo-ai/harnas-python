@@ -114,8 +114,8 @@ class StaleReadGuard:
         def wrapped(args: dict[str, Any]) -> str:
             result = handler(args)
             path = args.get("path")
-            if path:
-                self._record_hash(str(path), _sha256(result))
+            if path and Path(str(path)).exists():
+                self._record_hash(str(path), _sha256_file(str(path)))
             return result
 
         return wrapped
@@ -148,7 +148,7 @@ class StaleReadGuard:
                 self._check_fresh(str(path), action=action)
             result = handler(args)
             if path and Path(str(path)).exists():
-                self._record_hash(str(path), _sha256(Path(str(path)).read_text()))
+                self._record_hash(str(path), _sha256_file(str(path)))
             return result
 
         return wrapped
@@ -170,7 +170,7 @@ class StaleReadGuard:
             if self.require_read:
                 self._fire(path, action=action, reason="never_read")
             return
-        current = _sha256(Path(path).read_text()) if Path(path).exists() else None
+        current = _sha256_file(path) if Path(path).exists() else None
         if current != previous:
             self._fire(path, action=action, reason="drifted")
 
@@ -196,3 +196,7 @@ def _preview(value: Any, limit: int) -> str:
 
 def _sha256(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _sha256_file(path: str) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()

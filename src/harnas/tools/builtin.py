@@ -6,6 +6,7 @@ import glob as glob_module
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -22,6 +23,7 @@ GREP_MAX_MATCHES = 200
 MAX_FETCH_BYTES = 256 * 1024
 DEFAULT_BASH_SESSION_MAX_OUTPUT_BYTES = 64 * 1024
 ANSI_PATTERN = re.compile(r"\x1b\[[0-9;]*[mGKHF]|\r")
+ENV_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _BASH_SESSION_REGISTRY = None
 
 
@@ -44,10 +46,20 @@ DESCRIPTORS = [
     {
         "name": "read_file",
         "handler": "harnas.builtin.read_file",
-        "description": "Read the contents of a file at the given path. Returns the file body as text.",
+        "description": "Read a text file with cat -n style line numbers. Supports optional offset and limit.",
         "input_schema": {
             "type": "object",
-            "properties": {"path": {"type": "string"}},
+            "properties": {
+                "path": {"type": "string"},
+                "offset": {
+                    "type": "integer",
+                    "description": "Start at line N (0-indexed). Default 0.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Read at most N lines. Default 2000.",
+                },
+            },
             "required": ["path"],
         },
     },
@@ -159,6 +171,10 @@ DESCRIPTORS = [
                 "command": {"type": "string"},
                 "action": {"type": "string", "enum": ["run", "status", "kill"]},
                 "timeout_ms": {"type": "integer", "minimum": 1},
+                "env": {
+                    "type": "object",
+                    "additionalProperties": {"type": "string"},
+                },
             },
         },
     },
@@ -170,7 +186,18 @@ def descriptors() -> list[dict[str, Any]]:
 
 
 def read_file(args: dict[str, Any]) -> str:
-    return Path(_require(args, "path")).read_text(encoding="utf-8")
+    path = _require(args, "path")
+    data = Path(path).read_bytes()
+    if b"\0" in data[:8192]:
+        raise ValueError(
+            f"Cannot read binary file '{path}'. Use bash_session to inspect binary files."
+        )
+    offset = max(_optional_int(args, "offset"), 0)
+    limit = _optional_int(args, "limit")
+    if limit <= 0:
+        limit = 2000
+    limit = min(limit, 10_000)
+    return _format_numbered_file(data, offset, limit)
 
 
 def write_file(args: dict[str, Any]) -> str:
@@ -314,7 +341,13 @@ class BashSessionRegistry:
             if not command:
                 raise ValueError("missing required argument: command")
             session = self._session(session_id, config, create=True)
-            return _json_result(session.run(command, _duration_ms(args.get("timeout_ms"))))
+            return _json_result(
+                session.run(
+                    command,
+                    _command_env(args.get("env")),
+                    _duration_ms(args.get("timeout_ms")),
+                )
+            )
         if action == "status":
             return _json_result(self._session(session_id, config, create=False).status())
         if action == "kill":
@@ -370,12 +403,12 @@ class BashSession:
         self.current: BashCommand | None = None
         self.closed = False
 
-        shell = str(config.get("shell") or "bash")
-        if shell == "bash" and shutil.which("bash") is None:
-            shell = "sh"
+        self.shell = str(config.get("shell") or "bash")
+        if self.shell == "bash" and shutil.which("bash") is None:
+            self.shell = "sh"
         cwd = str(config.get("cwd") or ".")
         self.process = subprocess.Popen(
-            [shell],
+            [self.shell],
             cwd=str(Path(cwd).resolve()),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -392,7 +425,7 @@ class BashSession:
         threading.Thread(target=self._read_stderr, args=(self.process.stderr,), daemon=True).start()
         threading.Thread(target=self._wait_shell, daemon=True).start()
 
-    def run(self, command: str, timeout: float | None) -> dict[str, Any]:
+    def run(self, command: str, env: dict[str, str], timeout: float | None) -> dict[str, Any]:
         with self.condition:
             while self.current is not None:
                 self.condition.wait()
@@ -402,6 +435,7 @@ class BashSession:
             current.stdout_start = self.stdout.offset()
             current.stderr_start = self.stderr.offset()
             self.current = current
+            command = self._command_with_env(command, env)
             framed = (
                 f"\n{{ {command}\n}} </dev/null; __harnas_status=$?; "
                 f"printf '__HARNAS_ERR_DONE_{current.token}\\n' >&2; "
@@ -421,6 +455,16 @@ class BashSession:
             else:
                 self.condition.wait_for(lambda: current.done)
             return self._snapshot("completed", current.exit_code, current)
+
+    def _command_with_env(self, command: str, env: dict[str, str]) -> str:
+        if not env:
+            return command
+        assignments = [
+            f"{key}={shlex.quote(env[key])}"
+            for key in sorted(env)
+        ]
+        parts = ["env", *assignments, shlex.quote(self.shell), "-c", shlex.quote(command)]
+        return " ".join(parts)
 
     def status(self) -> dict[str, Any]:
         with self.condition:
@@ -603,6 +647,49 @@ def _duration_ms(value: Any) -> float | None:
     except (TypeError, ValueError):
         ms = 0
     return ms / 1000 if ms > 0 else None
+
+
+def _optional_int(args: dict[str, Any], key: str) -> int:
+    try:
+        return int(args.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _format_numbered_file(data: bytes, offset: int, limit: int) -> str:
+    if not data:
+        return "... [file has 0 total lines; showing 0–0]\n"
+    text = data.decode("utf-8", errors="replace")
+    lines = text.split("\n")
+    if text.endswith("\n"):
+        lines.pop()
+    total = len(lines)
+    if offset >= total:
+        return f"... [file has {total} total lines; offset {offset} is past EOF]\n"
+    finish = min(offset + limit, total)
+    output = "".join(
+        f"{line_no:6d}\t{line}\n"
+        for line_no, line in enumerate(lines[offset:finish], start=offset + 1)
+    )
+    if total > offset + limit:
+        output += f"... [file has {total} total lines; showing {offset}–{offset + limit}]\n"
+    return output
+
+
+def _command_env(value: Any) -> dict[str, str]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError("bash_session env must be an object")
+    env: dict[str, str] = {}
+    for key, item in value.items():
+        key = str(key)
+        if not ENV_NAME_PATTERN.match(key):
+            raise ValueError(f"invalid bash_session env key: {key}")
+        if not isinstance(item, str):
+            raise ValueError(f"bash_session env value for {key} must be a string")
+        env[key] = item
+    return env
 
 
 def _strip_ansi(value: str) -> str:
