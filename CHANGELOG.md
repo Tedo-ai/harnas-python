@@ -7,6 +7,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and Harnas adheres to [Semantic Versioning](https://semver.org/) on
 the specification as a whole.
 
+## [0.17.0] — 2026-05-21
+
+### Added
+
+- Added multimodal content block support for text, image, and PDF
+  document message content.
+- Added AttachmentStore helpers: filesystem, memory, and inline stores.
+- Updated Anthropic, OpenAI, Gemini, and Ollama projections for
+  multimodal content and provider capability mismatch fallback.
+- Added CLI `--input-file` support for image and PDF attachments.
+- Updated `harnas.transcript.project` to render non-text content
+  placeholders.
+
+### Changed
+
+- Lockstep spec release. Validated against fixtures version `0.17.0`.
+- Conformance now passes 54/54 fixtures, including the eight
+  multimodal content fixtures.
+- Bumped Python package metadata and `harnas.__version__` to 0.17.0.
+
 ## [0.16.0] — 2026-05-21
 
 ### Added
@@ -347,6 +367,7 @@ initial buffered conformance fixtures byte-identically with the Ruby
 reference, while intentionally remaining a conformance-first,
 standard-library-only port rather than a full peer implementation.
 
+[0.17.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.17.0
 [0.16.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.16.0
 [0.15.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.15.0
 [0.14.1]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.14.1

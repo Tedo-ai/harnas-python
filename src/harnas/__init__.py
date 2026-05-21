@@ -1,3 +1,3 @@
 """Harnas — Python implementation of the LLM agent harness specification."""
 
-__version__ = "0.16.0"
+__version__ = "0.17.0"

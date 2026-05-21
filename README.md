@@ -1,13 +1,13 @@
 # harnas-python
 
 Python implementation of [Harnas](https://github.com/Tedo-ai/harnas) —
-a specification for LLM agent harnesses. Passes 46/46 conformance
+a specification for LLM agent harnesses. Passes 54/54 conformance
 fixtures against the
 [Ruby reference](https://github.com/Tedo-ai/harnas-ruby), participates
 in the 3x3 Session JSONL round-trip matrix, and ships live providers,
 tools, strategies, middleware, and a manifest-driven CLI.
 
-**Version 0.16.0** (2026-05-21). Tracks Harnas spec 0.16.0.
+**Version 0.17.0** (2026-05-21). Tracks Harnas spec 0.17.0.
 
 ## Scope
 
