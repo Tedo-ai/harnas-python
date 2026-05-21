@@ -13,6 +13,7 @@ from typing import Any
 
 from .. import mutations
 from .. import content_blocks
+from .. import capabilities as provider_capabilities
 from ..attachments import AttachmentStore
 from ..log import Log
 
@@ -27,12 +28,18 @@ class Gemini:
         system: str | None = None,
         thinking_budget: int | None = 0,
         attachment_store: AttachmentStore | None = None,
+        provider_kind: str = "gemini",
+        capabilities: dict[str, bool] | None = None,
+        capability_mismatch_behavior: str = "metadata_fallback",
     ) -> None:
         self._model = model
         self._registry = registry
         self._system = system
         self._thinking_budget = thinking_budget
         self._attachment_store = attachment_store
+        self._provider_kind = provider_kind
+        self._capabilities = capabilities or {}
+        self._capability_mismatch_behavior = capability_mismatch_behavior
 
     def __call__(self, log: Log) -> dict[str, Any]:
         effective = mutations.apply(log)
@@ -107,6 +114,10 @@ class Gemini:
                     if text:
                         parts.append({"text": text})
                 case "image" | "document":
+                    fallback = self._fallback_if_unsupported(block)
+                    if fallback is not None:
+                        parts.append({"text": fallback["text"]})
+                        continue
                     resolved = content_blocks.resolve_data(block, self._attachment_store)
                     parts.append({
                         "inline_data": {
@@ -117,6 +128,21 @@ class Gemini:
                 case _:
                     raise ValueError(f"unsupported Gemini content block type: {block.get('type')}")
         return parts
+
+    def _fallback_if_unsupported(self, block: dict[str, Any]) -> dict[str, Any] | None:
+        block_type = str(block.get("type", ""))
+        if provider_capabilities.supported(
+            provider_kind=self._provider_kind,
+            model=self._model,
+            overrides=self._capabilities,
+            block_type=block_type,
+        ):
+            return None
+        if provider_capabilities.mismatch_behavior(self._capability_mismatch_behavior) == "error":
+            raise provider_capabilities.CapabilityMismatchError(
+                self._provider_kind, self._model, block_type
+            )
+        return provider_capabilities.fallback_block(block, self._attachment_store)
 
     def _append_function_response(self, contents: list[dict[str, Any]], evt) -> None:
         if evt.payload.get("error"):

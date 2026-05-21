@@ -12,6 +12,7 @@ from typing import Any
 
 from .. import mutations
 from .. import content_blocks
+from .. import capabilities as provider_capabilities
 from ..attachments import AttachmentStore
 from ..log import Log
 
@@ -23,11 +24,17 @@ class OpenAI:
         registry: Any | None = None,
         system: str | None = None,
         attachment_store: AttachmentStore | None = None,
+        provider_kind: str = "openai",
+        capabilities: dict[str, bool] | None = None,
+        capability_mismatch_behavior: str = "metadata_fallback",
     ) -> None:
         self._model = model
         self._registry = registry
         self._system = system
         self._attachment_store = attachment_store
+        self._provider_kind = provider_kind
+        self._capabilities = capabilities or {}
+        self._capability_mismatch_behavior = capability_mismatch_behavior
 
     def __call__(self, log: Log) -> dict[str, Any]:
         effective = mutations.apply(log)
@@ -94,10 +101,35 @@ class OpenAI:
                 case "text":
                     rendered.append({"type": "text", "text": str(block.get("text", ""))})
                 case "image":
+                    fallback = self._fallback_if_unsupported(block)
+                    if fallback is not None:
+                        rendered.append(fallback)
+                        continue
                     rendered.append({"type": "image_url", "image_url": {"url": self._image_url(block)}})
+                case "document":
+                    fallback = self._fallback_if_unsupported(block)
+                    if fallback is not None:
+                        rendered.append(fallback)
+                        continue
+                    raise ValueError("OpenAI document content is not supported")
                 case _:
                     raise ValueError(f"unsupported OpenAI content block type: {block.get('type')}")
         return rendered
+
+    def _fallback_if_unsupported(self, block: dict[str, Any]) -> dict[str, Any] | None:
+        block_type = str(block.get("type", ""))
+        if provider_capabilities.supported(
+            provider_kind=self._provider_kind,
+            model=self._model,
+            overrides=self._capabilities,
+            block_type=block_type,
+        ):
+            return None
+        if provider_capabilities.mismatch_behavior(self._capability_mismatch_behavior) == "error":
+            raise provider_capabilities.CapabilityMismatchError(
+                self._provider_kind, self._model, block_type
+            )
+        return provider_capabilities.fallback_block(block, self._attachment_store)
 
     def _image_url(self, block: dict[str, Any]) -> str:
         source = dict(block.get("source") or {})

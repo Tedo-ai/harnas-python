@@ -10,6 +10,7 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
+from .capabilities import CapabilityMismatchError
 from .providers.retry_policy import RetryPolicy
 from .session import Session
 from .event import Event
@@ -87,7 +88,11 @@ class AgentLoop:
         self._session.hooks.invoke("pre_projection", session=self._session)
         if self._terminal_runtime_error():
             return "runtime_failed"
-        request = self._projection(self._session.log)
+        try:
+            request = self._projection(self._session.log)
+        except CapabilityMismatchError as exc:
+            self._append_runtime_error("capability_mismatch", str(exc))
+            return "runtime_failed"
         self._session.hooks.invoke("post_projection", session=self._session, request=request)
         if not self._call_provider_with_retry(request):
             return "provider_failed"
@@ -147,6 +152,29 @@ class AgentLoop:
         if "Gemini" in class_name:
             return "gemini"
         return "unknown"
+
+    def _projection_kind(self) -> str:
+        class_name = self._projection.__class__.__name__
+        if "Anthropic" in class_name:
+            return "anthropic"
+        if "OpenAI" in class_name:
+            return "openai"
+        if "Gemini" in class_name:
+            return "gemini"
+        return "unknown"
+
+    def _append_runtime_error(self, reason: str, message: str) -> None:
+        self._session.log.append(
+            type="runtime_error",
+            payload={
+                "source": "projection",
+                "handler": self._projection_kind(),
+                "error_class": "CapabilityMismatchError",
+                "message": message,
+                "reason": reason,
+                "terminal": True,
+            },
+        )
 
     def _append_event(self, evt: dict[str, Any]) -> None:
         event = self._session.log.append(type=evt["type"], payload=evt["payload"])

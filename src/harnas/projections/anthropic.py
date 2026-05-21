@@ -12,6 +12,7 @@ from typing import Any
 
 from .. import mutations
 from .. import content_blocks
+from .. import capabilities as provider_capabilities
 from ..attachments import AttachmentStore
 from ..log import Log
 
@@ -26,12 +27,18 @@ class Anthropic:
         registry: Any | None = None,
         system: str | None = None,
         attachment_store: AttachmentStore | None = None,
+        provider_kind: str = "anthropic",
+        capabilities: dict[str, bool] | None = None,
+        capability_mismatch_behavior: str = "metadata_fallback",
     ) -> None:
         self._model = model
         self._max_tokens = max_tokens
         self._registry = registry
         self._system = system
         self._attachment_store = attachment_store
+        self._provider_kind = provider_kind
+        self._capabilities = capabilities or {}
+        self._capability_mismatch_behavior = capability_mismatch_behavior
 
     def __call__(self, log: Log) -> dict[str, Any]:
         effective = mutations.apply(log)
@@ -124,12 +131,35 @@ class Anthropic:
                 case "text":
                     rendered.append({"type": "text", "text": str(block.get("text", ""))})
                 case "image":
+                    fallback = self._fallback_if_unsupported(block)
+                    if fallback is not None:
+                        rendered.append(fallback)
+                        continue
                     rendered.append(self._media_block("image", block))
                 case "document":
+                    fallback = self._fallback_if_unsupported(block)
+                    if fallback is not None:
+                        rendered.append(fallback)
+                        continue
                     rendered.append(self._media_block("document", block))
                 case _:
                     raise ValueError(f"unsupported content block type: {block.get('type')}")
         return rendered
+
+    def _fallback_if_unsupported(self, block: dict[str, Any]) -> dict[str, Any] | None:
+        block_type = str(block.get("type", ""))
+        if provider_capabilities.supported(
+            provider_kind=self._provider_kind,
+            model=self._model,
+            overrides=self._capabilities,
+            block_type=block_type,
+        ):
+            return None
+        if provider_capabilities.mismatch_behavior(self._capability_mismatch_behavior) == "error":
+            raise provider_capabilities.CapabilityMismatchError(
+                self._provider_kind, self._model, block_type
+            )
+        return provider_capabilities.fallback_block(block, self._attachment_store)
 
     def _media_block(self, kind: str, block: dict[str, Any]) -> dict[str, Any]:
         source = dict(block.get("source") or {})

@@ -208,7 +208,19 @@ def validate(manifest: dict[str, Any]) -> None:
 def _validate_provider(provider: Any) -> None:
     if not isinstance(provider, dict):
         raise ValidationError("provider must be an object")
-    _reject_unknown(provider, {"kind", "model", "max_tokens", "thinking_budget", "base_url"}, "provider")
+    _reject_unknown(
+        provider,
+        {
+            "kind",
+            "model",
+            "max_tokens",
+            "thinking_budget",
+            "base_url",
+            "capabilities",
+            "capability_mismatch_behavior",
+        },
+        "provider",
+    )
     _require(provider, ["kind", "max_tokens"], "provider")
     if provider["kind"] not in PROVIDER_KINDS:
         raise UnknownProviderError(f"unknown provider kind: {provider['kind']!r}")
@@ -350,6 +362,11 @@ def projection_for(
             registry=registry,
             system=system,
             attachment_store=attachment_store,
+            provider_kind=kind,
+            capabilities=provider.get("capabilities", {}),
+            capability_mismatch_behavior=provider.get(
+                "capability_mismatch_behavior", "metadata_fallback"
+            ),
         )
     if kind in ("openai", "ollama"):
         return OpenAIProjection(
@@ -357,6 +374,11 @@ def projection_for(
             registry=registry,
             system=system,
             attachment_store=attachment_store,
+            provider_kind=kind,
+            capabilities=provider.get("capabilities", {}),
+            capability_mismatch_behavior=provider.get(
+                "capability_mismatch_behavior", "metadata_fallback"
+            ),
         )
     if kind == "gemini":
         return GeminiProjection(
@@ -365,6 +387,11 @@ def projection_for(
             system=system,
             thinking_budget=provider.get("thinking_budget", 0),
             attachment_store=attachment_store,
+            provider_kind=kind,
+            capabilities=provider.get("capabilities", {}),
+            capability_mismatch_behavior=provider.get(
+                "capability_mismatch_behavior", "metadata_fallback"
+            ),
         )
     raise UnknownProviderError(f"unknown provider kind: {kind!r}")
 
