@@ -53,6 +53,7 @@ class Result:
 
 def run(fixture_dir: str) -> Result:
     manifest = json.loads(_read(os.path.join(fixture_dir, "manifest.json")))
+    manifest.pop("fixture_version_added", None)
     manifest = _resolve_fixture_paths(manifest, fixture_dir)
     script, streaming = _load_provider_script(fixture_dir)
     inputs = json.loads(_read(os.path.join(fixture_dir, "inputs.json")))
@@ -88,6 +89,17 @@ def run(fixture_dir: str) -> Result:
         expected=expected,
         diff=diff,
     )
+
+
+def fixture_version(spec_root: str) -> str | None:
+    path = os.path.join(spec_root, "VERSION")
+    if not os.path.isfile(path):
+        return None
+    for line in _read(path).splitlines():
+        key, _, value = line.partition(":")
+        if key.strip() == "fixtures_version":
+            return value.strip()
+    return None
 
 
 def _run_agent(

@@ -7,6 +7,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and Harnas adheres to [Semantic Versioning](https://semver.org/) on
 the specification as a whole.
 
+## [0.14.1] — 2026-05-21
+
+### Added
+
+- Conformance runner now supports `--fixtures-from`, can be invoked as
+  `python -m harnas.conformance`, and reports the fixtures version from
+  the spec repo `VERSION` file.
+- Added packed-wheel conformance CI: build the wheel, install it in a
+  fresh virtualenv, and run conformance against the installed artifact.
+
+### Changed
+
+- Validated against fixtures version `0.14.1`.
+
 ## [0.14.0] — 2026-05-21
 
 ### Added
@@ -297,6 +311,7 @@ initial buffered conformance fixtures byte-identically with the Ruby
 reference, while intentionally remaining a conformance-first,
 standard-library-only port rather than a full peer implementation.
 
+[0.14.1]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.14.1
 [0.14.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.14.0
 [0.13.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.13.0
 [0.12.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.12.0
