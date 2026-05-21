@@ -1,13 +1,13 @@
 # harnas-python
 
 Python implementation of [Harnas](https://github.com/Tedo-ai/harnas) —
-a specification for LLM agent harnesses. Passes 54/54 conformance
+a specification for LLM agent harnesses. Passes 59/59 conformance
 fixtures against the
 [Ruby reference](https://github.com/Tedo-ai/harnas-ruby), participates
 in the 3x3 Session JSONL round-trip matrix, and ships live providers,
 tools, strategies, middleware, and a manifest-driven CLI.
 
-**Version 0.17.0** (2026-05-21). Tracks Harnas spec 0.17.0.
+**Version 0.18.0** (2026-05-21). Tracks Harnas spec 0.18.0.
 
 ## Scope
 
@@ -35,6 +35,8 @@ The Python surface includes:
   cross-session delegation projections in `harnas.projection`
 - MCP adapter package: HTTP and stdio transports, content flattening,
   Harnas tool descriptor translation, and degraded startup handling
+- Optional `harnas.builtin.spawn_agent` receipt built-in for products
+  that want the common delegation tool shape
 
 ## Layout
 

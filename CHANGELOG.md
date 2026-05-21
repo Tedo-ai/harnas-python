@@ -7,6 +7,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and Harnas adheres to [Semantic Versioning](https://semver.org/) on
 the specification as a whole.
 
+## [0.18.0] — 2026-05-21
+
+### Added
+
+- Lockstep spec release. Validated against fixtures version `0.18.0`.
+- Added subagent delegation event support, Session header delegation
+  metadata, capability manifest helpers, and cross-session projection
+  helpers.
+- Added support for projection conformance fixtures via
+  `expected-projections.jsonl`.
+- Added optional `harnas.builtin.spawn_agent`, which records an
+  `agent_spawn` receipt and returns generated child identifiers.
+- Conformance now passes 59/59 fixtures, including the five subagent
+  delegation fixtures.
+- Bumped Python package metadata and `harnas.__version__` to 0.18.0.
+
 ## [0.17.0] — 2026-05-21
 
 ### Added
@@ -367,6 +383,7 @@ initial buffered conformance fixtures byte-identically with the Ruby
 reference, while intentionally remaining a conformance-first,
 standard-library-only port rather than a full peer implementation.
 
+[0.18.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.18.0
 [0.17.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.17.0
 [0.16.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.16.0
 [0.15.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.15.0
