@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..agent_loop import AgentLoop
+from ..attachments import MemoryStore
 from ..session import Session
 from ..tools.registry import Registry
 from ..tools.runner import Runner
@@ -110,8 +111,13 @@ def _run_agent(
     script: list,
     inputs: list[str],
     streaming: bool = False,
+    attachment_store: Any | None = None,
 ) -> list[dict[str, Any]]:
-    return _serialize_log(run_session(manifest, script, inputs, streaming=streaming).log)
+    return _serialize_log(
+        run_session(
+            manifest, script, inputs, streaming=streaming, attachment_store=attachment_store
+        ).log
+    )
 
 
 def _run_agent_with_sidecars(
@@ -127,8 +133,11 @@ def _run_agent_with_sidecars(
         expected_strategy_events_path
         and os.path.exists(expected_strategy_events_path)
     )
+    attachment_store = _load_attachment_store(".")
     if not needs_deltas and not needs_strategy_events:
-        return _run_agent(manifest, script, inputs, streaming=streaming), [], []
+        return _run_agent(
+            manifest, script, inputs, streaming=streaming, attachment_store=attachment_store
+        ), [], []
     with tempfile.TemporaryDirectory(prefix="harnas-deltas") as tmp:
         delta_path = os.path.join(tmp, "session.deltas.jsonl")
         strategy_events_path = os.path.join(tmp, "session.strategy-events.jsonl")
@@ -138,6 +147,7 @@ def _run_agent_with_sidecars(
             inputs,
             streaming=streaming,
             delta_path=delta_path if needs_deltas else None,
+            attachment_store=attachment_store,
             strategy_events_path=strategy_events_path if needs_strategy_events else None,
         )
         return (
@@ -155,9 +165,12 @@ def run_session(
     session: Session | None = None,
     delta_path: str | None = None,
     strategy_events_path: str | None = None,
+    attachment_store: Any | None = None,
 ) -> Session:
     registry = _build_registry(manifest.get("tools", []))
-    projection, provider, ingestor = _build_pipeline(manifest, script, registry, streaming)
+    projection, provider, ingestor = _build_pipeline(
+        manifest, script, registry, streaming, attachment_store or _load_attachment_store(".")
+    )
     runner = Runner(registry) if registry.size > 0 else None
     session = session or Session.create(metadata={
         "manifest_name": manifest["name"],
@@ -204,8 +217,11 @@ def run_session(
                     raise RuntimeError("manifest snapshot mismatch")
             continue
 
-        text = input_item["user"] if isinstance(input_item, dict) else input_item
-        session.log.append(type="user_message", payload={"text": text})
+        if isinstance(input_item, dict) and "content" in input_item:
+            session.log.append(type="user_message", payload={"content": input_item["content"]})
+        else:
+            text = input_item["user"] if isinstance(input_item, dict) else input_item
+            session.log.append(type="user_message", payload={"text": text})
         AgentLoop(
             session=session,
             projection=projection,
@@ -306,6 +322,7 @@ def _build_pipeline(
     script: list,
     registry: Registry,
     streaming: bool = False,
+    attachment_store: Any | None = None,
 ):
     """Map manifest provider.kind -> projection + ingestor classes."""
     kind = manifest["provider"]["kind"]
@@ -317,24 +334,64 @@ def _build_pipeline(
         from ..projections.anthropic import Anthropic as AnthropicProjection
         from ..ingestors.anthropic import Anthropic as AnthropicIngestor
         projection = AnthropicProjection(
-            model=model, max_tokens=max_tokens, system=system, registry=registry
+            model=model,
+            max_tokens=max_tokens,
+            system=system,
+            registry=registry,
+            attachment_store=attachment_store,
+            provider_kind=kind,
+            capabilities=manifest["provider"].get("capabilities", {}),
+            capability_mismatch_behavior=manifest["provider"].get(
+                "capability_mismatch_behavior", "metadata_fallback"
+            ),
         )
         ingestor = AnthropicIngestor()
     elif kind == "openai":
         from ..projections.openai import OpenAI as OpenAIProjection
         from ..ingestors.openai import OpenAI as OpenAIIngestor
-        projection = OpenAIProjection(model=model, system=system, registry=registry)
+        projection = OpenAIProjection(
+            model=model,
+            system=system,
+            registry=registry,
+            attachment_store=attachment_store,
+            provider_kind=kind,
+            capabilities=manifest["provider"].get("capabilities", {}),
+            capability_mismatch_behavior=manifest["provider"].get(
+                "capability_mismatch_behavior", "metadata_fallback"
+            ),
+        )
         ingestor = OpenAIIngestor()
     elif kind == "gemini":
         from ..projections.gemini import Gemini as GeminiProjection
         from ..ingestors.gemini import Gemini as GeminiIngestor
-        projection = GeminiProjection(model=model, system=system, registry=registry)
+        projection = GeminiProjection(
+            model=model,
+            system=system,
+            registry=registry,
+            attachment_store=attachment_store,
+            provider_kind=kind,
+            capabilities=manifest["provider"].get("capabilities", {}),
+            capability_mismatch_behavior=manifest["provider"].get(
+                "capability_mismatch_behavior", "metadata_fallback"
+            ),
+        )
         ingestor = GeminiIngestor()
     else:
         raise NotImplementedError(f"provider kind '{kind}' not yet implemented in the Python port")
 
     provider = ScriptedStreamProvider(script) if streaming else ScriptedProvider(script)
     return projection, provider, ingestor
+
+
+def _load_attachment_store(directory: str):
+    store = MemoryStore()
+    path = os.path.join(directory, "attachments.json")
+    if not os.path.exists(path):
+        return store
+    for spec in json.loads(_read(path)):
+        with open(os.path.join(directory, spec["path"]), "rb") as fh:
+            store.put(fh.read(), spec["media_type"])
+    return store
 
 
 def _build_registry(tools_spec: list[dict[str, Any]]) -> Registry:
