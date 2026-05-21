@@ -22,6 +22,7 @@ from ..tools.registry import Registry
 from ..tools.runner import Runner
 from ..tools.tool import Tool
 from ..observation import DeltaLogger
+from .. import projection
 from .scripted_provider import ScriptedProvider
 from .scripted_stream_provider import ScriptedStreamProvider
 
@@ -54,6 +55,9 @@ class Result:
 
 
 def run(fixture_dir: str) -> Result:
+    if os.path.exists(os.path.join(fixture_dir, "expected-projections.jsonl")):
+        return _run_projection_fixture(fixture_dir)
+
     manifest = json.loads(_read(os.path.join(fixture_dir, "manifest.json")))
     manifest.pop("fixture_version_added", None)
     manifest = _resolve_fixture_paths(manifest, fixture_dir)
@@ -93,6 +97,67 @@ def run(fixture_dir: str) -> Result:
         expected=expected,
         diff=diff,
     )
+
+
+def _run_projection_fixture(fixture_dir: str) -> Result:
+    sessions, root = _load_fixture_sessions(os.path.join(fixture_dir, "sessions"))
+    expected = _load_expected(os.path.join(fixture_dir, "expected-log.jsonl"))
+    actual = _serialize_log(root.log)
+    diff = _first_mismatch(actual, expected)
+    if diff is None:
+        diff = _first_projection_mismatch(
+            _load_expected(os.path.join(fixture_dir, "expected-projections.jsonl")),
+            sessions,
+        )
+    return Result(
+        fixture=os.path.basename(fixture_dir.rstrip("/")),
+        passed=diff is None,
+        actual=actual,
+        expected=expected,
+        diff=diff,
+    )
+
+
+def _load_fixture_sessions(dir_path: str) -> tuple[dict[str, Session], Session]:
+    sessions: dict[str, Session] = {}
+    root: Session | None = None
+    for name in sorted(os.listdir(dir_path)):
+        if not name.endswith(".jsonl"):
+            continue
+        session = Session.load(os.path.join(dir_path, name))
+        sessions[session.id] = session
+        if session.parent_session_id is None:
+            if root is not None:
+                raise ValueError(f"multiple root sessions in {dir_path}")
+            root = session
+    if root is None:
+        raise ValueError(f"no root session in {dir_path}")
+    return sessions, root
+
+
+def _first_projection_mismatch(
+    rows: list[dict[str, Any]],
+    sessions: dict[str, Session],
+) -> dict[str, Any] | None:
+    for index, row in enumerate(rows):
+        actual = _evaluate_projection(row["projection"], row["input"], sessions)
+        expected = row["output"]
+        if _normalize(actual) == _normalize(expected):
+            continue
+        return {"at_seq": f"projection {index}", "actual": actual, "expected": expected}
+    return None
+
+
+def _evaluate_projection(name: str, input_session_id: str, sessions: dict[str, Session]) -> Any:
+    if name == "delegation_tree":
+        return projection.delegation_tree(input_session_id, runtime=sessions)
+    if name == "open_children":
+        return projection.open_children(input_session_id, runtime=sessions)
+    if name == "descendant_timeline":
+        return projection.descendant_timeline(input_session_id, runtime=sessions)
+    if name == "descendant_usage":
+        return projection.descendant_usage(input_session_id, runtime=sessions)
+    raise ValueError(f"unknown projection {name!r}")
 
 
 def fixture_version(spec_root: str) -> str | None:
