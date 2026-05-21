@@ -1,5 +1,6 @@
 from harnas import projection
 from harnas.session import Session
+import pytest
 
 
 def test_delegation_projections():
@@ -45,3 +46,52 @@ def test_delegation_projections():
         "completion_tokens": 7,
         "total_tokens": 12,
     }
+
+
+def test_delegation_projection_rejects_broken_child_link():
+    parent = Session(id="ses_parent")
+    parent.log.append("agent_spawn", {
+        "spawn_id": "spn_1",
+        "child_session_id": "ses_child",
+        "task": "audit",
+    })
+    child = Session(id="ses_child", parent_session_id="ses_other", spawn_id="spn_1")
+
+    with pytest.raises(ValueError, match="broken delegation link"):
+        projection.delegation_tree(
+            "ses_parent",
+            runtime={"ses_parent": parent, "ses_child": child},
+        )
+
+
+def test_delegation_projection_rejects_duplicate_results():
+    parent = Session(id="ses_parent")
+    spawn = parent.log.append("agent_spawn", {
+        "spawn_id": "spn_1",
+        "child_session_id": "ses_child",
+        "task": "audit",
+    })
+    parent.log.append("agent_result", {"spawn_id": "spn_1", "child_session_id": "ses_child"})
+    parent.log.append("agent_result", {"spawn_id": "spn_1", "child_session_id": "ses_child"})
+    child = Session(
+        id="ses_child",
+        parent_session_id="ses_parent",
+        spawn_id="spn_1",
+        spawned_by_event_id=spawn.id,
+    )
+
+    with pytest.raises(ValueError, match="multiple agent_result"):
+        projection.delegation_tree(
+            "ses_parent",
+            runtime={"ses_parent": parent, "ses_child": child},
+        )
+
+
+def test_delegation_projection_rejects_cycles():
+    a = Session(id="ses_a", parent_session_id="ses_b", spawn_id="spn_b")
+    b = Session(id="ses_b", parent_session_id="ses_a", spawn_id="spn_a")
+    a.log.append("agent_spawn", {"spawn_id": "spn_a", "child_session_id": "ses_b", "task": "b"})
+    b.log.append("agent_spawn", {"spawn_id": "spn_b", "child_session_id": "ses_a", "task": "a"})
+
+    with pytest.raises(ValueError, match="delegation cycle"):
+        projection.delegation_tree("ses_a", runtime={"ses_a": a, "ses_b": b})
