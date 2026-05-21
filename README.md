@@ -7,7 +7,7 @@ fixtures against the
 in the 3x3 Session JSONL round-trip matrix, and ships live providers,
 tools, strategies, middleware, and a manifest-driven CLI.
 
-**Version 0.14.1** (2026-05-21). Tracks Harnas spec 0.14.1.
+**Version 0.15.0** (2026-05-21). Tracks Harnas spec 0.14.1.
 
 ## Scope
 
@@ -32,6 +32,8 @@ The Python surface includes:
   cost_budget
 - Adopter helper APIs: `harnas.runtime.Runtime`,
   `harnas.transcript.project`, and `harnas.tools.snapshot`
+- MCP adapter package: HTTP and stdio transports, content flattening,
+  Harnas tool descriptor translation, and degraded startup handling
 
 ## Layout
 
@@ -113,6 +115,40 @@ python3 bin/harnas project session.jsonl --manifest manifest.json [--from-seq N]
 `project` renders the provider request body from a saved Log slice
 without making a provider call. It supports the conformance-facing
 Anthropic, OpenAI-compatible, and Gemini projections.
+
+## MCP
+
+The Python port includes `harnas.mcp` for consuming Model Context
+Protocol servers as Harnas tools. Connect to an MCP server, ask it for
+translated tool descriptors, and pass its dynamic handlers to the
+runtime:
+
+```python
+from harnas import mcp
+from harnas.runtime import Runtime
+
+mcp_client = mcp.connect(
+    server_name="editorial-ai",
+    url="http://localhost:3001",
+    headers={"Authorization": f"Bearer {token}"},
+)
+
+tools = mcp_client.tools()
+handlers = mcp_client.tool_handlers()
+
+manifest = dict(manifest)
+manifest["tools"] = [*manifest.get("tools", []), *tools]
+
+runtime = Runtime.build(
+    manifest=manifest,
+    tool_handlers=handlers,
+)
+```
+
+`tools()` performs lazy MCP initialize + `tools/list`, caches the
+translated descriptors, and degrades to an empty tool list if the MCP
+server is unavailable. `tool_handlers()` returns the
+`mcp_passthrough.<server>` handler required by those descriptors.
 
 The live smoke scripts exercise both buffered and streaming providers:
 

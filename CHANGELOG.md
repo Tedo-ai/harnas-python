@@ -7,13 +7,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and Harnas adheres to [Semantic Versioning](https://semver.org/) on
 the specification as a whole.
 
-## [Unreleased]
+## [0.15.0] — 2026-05-21
 
 ### Added
 
+- Added `harnas.mcp`, a Model Context Protocol adapter package with
+  HTTP POST and stdio transports, MCP content flattening, Harnas tool
+  descriptor translation, dynamic passthrough tool handlers, custom
+  HTTP headers, lazy initialization, and degraded startup handling.
 - Tool handlers may now optionally accept a second `config` argument
   carrying the tool's manifest config map. Existing single-argument
   handlers continue to work unchanged.
+
+### Changed
+
+- First non-lockstep release. `harnas-ruby` remains at v0.14.1 with no
+  functional change, and the spec remains at v0.14.1 with no spec
+  change. The lockstep discipline applies to spec changes; library
+  feature additions may now ship independently per implementation.
 
 ## [0.14.1] — 2026-05-21
 
@@ -319,6 +330,7 @@ initial buffered conformance fixtures byte-identically with the Ruby
 reference, while intentionally remaining a conformance-first,
 standard-library-only port rather than a full peer implementation.
 
+[0.15.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.15.0
 [0.14.1]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.14.1
 [0.14.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.14.0
 [0.13.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.13.0
