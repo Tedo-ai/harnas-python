@@ -72,7 +72,10 @@ class Agent:
         )
 
     def chat(self, text: str) -> Response:
-        self._append_user_message(text)
+        return self.chat_payload({"text": text})
+
+    def chat_payload(self, payload: dict[str, Any]) -> Response:
+        self._append_user_payload(payload)
         AgentLoop(
             session=self.session,
             projection=self.projection,
@@ -84,10 +87,17 @@ class Agent:
         return self._build_response()
 
     def stream(self, text: str, on_delta: Callable[[Any], None] | None = None) -> Response:
-        if self.stream_provider is None:
-            return self.chat(text)
+        return self.stream_payload({"text": text}, on_delta)
 
-        self._append_user_message(text)
+    def stream_payload(
+        self,
+        payload: dict[str, Any],
+        on_delta: Callable[[Any], None] | None = None,
+    ) -> Response:
+        if self.stream_provider is None:
+            return self.chat_payload(payload)
+
+        self._append_user_payload(payload)
         AgentLoop(
             session=self.session,
             projection=self.projection,
@@ -116,8 +126,8 @@ class Agent:
     def log(self):
         return self.session.log
 
-    def _append_user_message(self, text: str) -> None:
-        self.session.log.append(type="user_message", payload={"text": text})
+    def _append_user_payload(self, payload: dict[str, Any]) -> None:
+        self.session.log.append(type="user_message", payload=payload)
 
     def _build_response(self) -> Response:
         last = next(

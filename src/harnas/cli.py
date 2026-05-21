@@ -18,6 +18,7 @@ from .projections.anthropic import Anthropic
 from .projections.gemini import Gemini
 from .projections.openai import OpenAI
 from .session import Session
+from . import input_file
 from .tools.registry import Registry
 from .tools.tool import Tool
 
@@ -61,6 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     chat = subparsers.add_parser("chat", help="start an interactive manifest-backed chat")
     chat.add_argument("manifest")
+    chat.add_argument("--input-file", action="append", default=[])
     add_provider_model_options(chat)
 
     diff = subparsers.add_parser("diff", help="compare two Session JSONL files")
@@ -87,6 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
     run = subparsers.add_parser("run", help="send one input to a manifest-backed agent")
     run.add_argument("manifest")
     run.add_argument("--input", required=True)
+    run.add_argument("--input-file", action="append", default=[])
     run.add_argument("--output-format", choices=["text", "ndjson"], default="text")
     add_provider_model_options(run)
 
@@ -121,7 +124,7 @@ def command_chat(args: argparse.Namespace) -> int:
                 streamed = True
                 print(delta.payload.get("chunk", ""), end="", flush=True)
 
-        response = agent.stream(text, print_delta)
+        response = agent.stream_payload(input_payload(text, args.input_file), print_delta)
         error = terminal_provider_error(agent)
         if error is not None:
             print(f"provider error: {format_provider_error(error)}", file=sys.stderr)
@@ -137,7 +140,7 @@ def command_chat(args: argparse.Namespace) -> int:
 def command_run(args: argparse.Namespace) -> int:
     agent = build_agent(args.manifest, provider=args.provider, model=args.model)
     started = time.monotonic()
-    response = agent.chat(args.input)
+    response = agent.chat_payload(input_payload(args.input, args.input_file))
     save_session(agent)
     runtime_error = terminal_runtime_error(agent)
     error = terminal_provider_error(agent)
@@ -166,6 +169,12 @@ def build_agent(path: str, *, provider: str | None, model: str | None) -> Agent:
         api_keys=api_keys(),
         tool_handlers=tool_handlers_for(manifest),
     )
+
+
+def input_payload(text: str, paths: list[str]) -> dict[str, Any]:
+    if not paths:
+        return {"text": text}
+    return {"content": input_file.content_blocks(text, paths)}
 
 
 def api_keys() -> dict[str, str | None]:

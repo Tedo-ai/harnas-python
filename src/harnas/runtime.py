@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
+from .attachments import FilesystemStore
 from .agent import Agent
 from .agent_loop import DEFAULT_MAX_TURNS, AgentLoop
 from . import manifest as manifest_loader
@@ -23,8 +25,12 @@ class Runtime:
         session_path: str | None = None,
         resume: bool = False,
         metadata: dict[str, Any] | None = None,
+        attachment_store: Any | None = None,
         **options: Any,
     ) -> "Runtime":
+        if attachment_store is None:
+            attachment_store = FilesystemStore(default_attachment_root(session_path))
+        options.setdefault("attachment_store", attachment_store)
         loaded = manifest_loader.load(manifest, **options)
         session = Session.load(session_path) if resume and session_path else loaded.session
         if metadata:
@@ -67,3 +73,10 @@ class Runtime:
 
     def save(self, path: str) -> Session:
         return self.session.save(path)
+
+
+def default_attachment_root(session_path: str | None) -> str:
+    if session_path:
+        path = Path(session_path)
+        return str(path.with_suffix("")) + ".attachments"
+    return str(Path.home() / ".harnas" / "runs" / "attachments")

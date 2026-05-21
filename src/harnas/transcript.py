@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from typing import Any
 
 
@@ -11,18 +12,24 @@ def project(
     include_tools: bool = True,
     include_errors: bool = True,
     include_annotations: bool = False,
+    content_placeholder: Any | None = None,
 ) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for event in log:
         payload = event.payload
         if event.type == "user_message":
-            items.append(_item(event, kind="user", role="user", text=str(payload.get("text", ""))))
+            items.append(_item(
+                event,
+                kind="user",
+                role="user",
+                text=_message_text(payload, content_placeholder),
+            ))
         elif event.type == "assistant_message":
             items.append(_item(
                 event,
                 kind="assistant",
                 role="assistant",
-                text=str(payload.get("text", "")),
+                text=_message_text(payload, content_placeholder),
                 stop_reason=payload.get("stop_reason"),
                 usage=payload.get("usage", {}),
                 reasoning=payload.get("reasoning"),
@@ -71,3 +78,51 @@ def _item(event: Any, **fields: Any) -> dict[str, Any]:
         "type": event.type,
         **fields,
     }
+
+
+def _message_text(payload: dict[str, Any], content_placeholder: Any | None) -> str:
+    blocks = payload.get("content")
+    if blocks is None:
+        return str(payload.get("text", ""))
+    parts: list[str] = []
+    for block in blocks:
+        if block.get("type") == "text":
+            parts.append(str(block.get("text", "")))
+        else:
+            parts.append(
+                content_placeholder(block)
+                if content_placeholder is not None
+                else _default_content_placeholder(block)
+            )
+    return "\n".join(parts)
+
+
+def _default_content_placeholder(block: dict[str, Any]) -> str:
+    parts = [str(block.get("type", ""))]
+    if block.get("name"):
+        parts.append(str(block["name"]))
+    if block.get("media_type"):
+        parts.append(str(block["media_type"]))
+    size = _content_block_size(block)
+    if size > 0:
+        parts.append(_format_byte_size(size))
+    return f"[{': '.join(parts)}]"
+
+
+def _content_block_size(block: dict[str, Any]) -> int:
+    size = int(block.get("byte_size") or 0)
+    if size > 0:
+        return size
+    source = block.get("source") or {}
+    if source.get("kind") != "base64":
+        return 0
+    try:
+        return len(base64.b64decode(str(source.get("data") or ""), validate=True))
+    except ValueError:
+        return 0
+
+
+def _format_byte_size(size: int) -> str:
+    if size >= 1024:
+        return f"{(size + 1023) // 1024}kb"
+    return f"{size} bytes"

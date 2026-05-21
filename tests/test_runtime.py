@@ -1,4 +1,4 @@
-from harnas.runtime import Runtime
+from harnas.runtime import Runtime, default_attachment_root
 from harnas.session import Session
 
 
@@ -31,3 +31,7 @@ def test_runtime_resumes_saved_session(tmp_path):
 
     assert runtime.session.id == session.id
     assert [event.payload["text"] for event in runtime.session.log] == ["old"]
+
+
+def test_default_attachment_root_uses_session_path():
+    assert default_attachment_root("/tmp/run.jsonl") == "/tmp/run.attachments"
