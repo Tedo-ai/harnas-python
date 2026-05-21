@@ -66,6 +66,7 @@ def run(fixture_dir: str) -> Result:
     expected = _load_expected(os.path.join(fixture_dir, "expected-log.jsonl"))
     expected_deltas_path = os.path.join(fixture_dir, "expected-deltas.jsonl")
     expected_strategy_events_path = os.path.join(fixture_dir, "expected-strategy-events.jsonl")
+    expected_spawn_children_path = os.path.join(fixture_dir, "expected-spawn-children.json")
 
     cwd = os.getcwd()
     try:
@@ -77,6 +78,7 @@ def run(fixture_dir: str) -> Result:
             streaming=streaming,
             expected_deltas_path=expected_deltas_path,
             expected_strategy_events_path=expected_strategy_events_path,
+            expected_spawn_children_path=expected_spawn_children_path,
         )
     finally:
         os.chdir(cwd)
@@ -192,17 +194,23 @@ def _run_agent_with_sidecars(
     streaming: bool = False,
     expected_deltas_path: str | None = None,
     expected_strategy_events_path: str | None = None,
+    expected_spawn_children_path: str | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     needs_deltas = expected_deltas_path and os.path.exists(expected_deltas_path)
     needs_strategy_events = (
         expected_strategy_events_path
         and os.path.exists(expected_strategy_events_path)
     )
+    needs_spawn_children = (
+        expected_spawn_children_path
+        and os.path.exists(expected_spawn_children_path)
+    )
     attachment_store = _load_attachment_store(".")
-    if not needs_deltas and not needs_strategy_events:
-        return _run_agent(
+    if not needs_deltas and not needs_strategy_events and not needs_spawn_children:
+        session = run_session(
             manifest, script, inputs, streaming=streaming, attachment_store=attachment_store
-        ), [], []
+        )
+        return _serialize_log(session.log), [], []
     with tempfile.TemporaryDirectory(prefix="harnas-deltas") as tmp:
         delta_path = os.path.join(tmp, "session.deltas.jsonl")
         strategy_events_path = os.path.join(tmp, "session.strategy-events.jsonl")
@@ -215,6 +223,8 @@ def _run_agent_with_sidecars(
             attachment_store=attachment_store,
             strategy_events_path=strategy_events_path if needs_strategy_events else None,
         )
+        if needs_spawn_children:
+            _verify_spawn_children(session, expected_spawn_children_path)
         return (
             _serialize_log(session.log),
             _load_expected(delta_path) if needs_deltas else [],
@@ -277,7 +287,13 @@ def run_session(
             with tempfile.TemporaryDirectory(prefix="harnas-save-load") as tmp:
                 path = os.path.join(tmp, "session.jsonl")
                 session.save(path)
+                ids_before = [event.id for event in session.log]
                 session = Session.load(path)
+                ids_after = [event.id for event in session.log]
+                if ids_before != ids_after:
+                    raise RuntimeError(
+                        f"event id preservation mismatch: before={ids_before} after={ids_after}"
+                    )
                 if _normalize(session.metadata.get("manifest")) != _normalize(manifest):
                     raise RuntimeError("manifest snapshot mismatch")
             continue
@@ -296,8 +312,42 @@ def run_session(
             runner=runner,
             max_turns=3,
         ).run()
+        if runner is not None and runner.child_sessions:
+            session.metadata["spawn_child_sessions"] = runner.child_sessions
 
     return session
+
+
+def _verify_spawn_children(session: Session, path: str) -> None:
+    spec = json.loads(_read(path))
+    spawn = next(
+        (
+            event for event in session.log
+            if event.type == "agent_spawn" and event.payload.get("task") == spec["task"]
+        ),
+        None,
+    )
+    if spawn is None:
+        raise RuntimeError(f"missing agent_spawn for task {spec['task']}")
+    child_id = spawn.payload["child_session_id"]
+    child = session.metadata.get("spawn_child_sessions", {}).get(child_id)
+    if child is None:
+        raise RuntimeError(f"missing child Session {child_id}")
+    if (
+        child.parent_session_id != session.id
+        or child.spawn_id != spawn.payload["spawn_id"]
+        or child.spawned_by_event_id != spawn.payload["spawned_by_event_id"]
+    ):
+        raise RuntimeError("child reciprocity mismatch")
+    if not child.root_session_id or not child.delegation_chain:
+        raise RuntimeError("child delegation metadata missing")
+    first = child.log[0] if child.log.size else None
+    if (
+        first is None
+        or first.type != "user_message"
+        or first.payload.get("text") != spec["child_initial_user_text"]
+    ):
+        raise RuntimeError("child initial user_message mismatch")
 
 
 def _verify_fork(parent: Session, forked: Session, at_seq: int) -> None:
@@ -470,6 +520,7 @@ def _build_registry(tools_spec: list[dict[str, Any]]) -> Registry:
             input_schema=tool_def["input_schema"],
             handler=handler,
             config=dict(tool_def.get("config", {})),
+            handler_name=handler_name,
         ))
     return registry
 
@@ -607,9 +658,29 @@ def _first_mismatch(actual: list, expected: list) -> dict[str, Any] | None:
     for i in range(upper):
         a = actual[i] if i < len(actual) else None
         e = expected[i] if i < len(expected) else None
-        if a != e:
+        if not _wildcard_match(a, e):
             return {"at_seq": i, "actual": a, "expected": e}
     return None
+
+
+def _wildcard_match(actual: Any, expected: Any) -> bool:
+    if "<generated>" not in json.dumps(expected, ensure_ascii=False):
+        return actual == expected
+    return _wildcard_value_match(actual, expected)
+
+
+def _wildcard_value_match(actual: Any, expected: Any) -> bool:
+    if expected == "<generated>":
+        return actual is not None and actual != ""
+    if isinstance(actual, dict) and isinstance(expected, dict):
+        if sorted(actual.keys()) != sorted(expected.keys()):
+            return False
+        return all(_wildcard_value_match(actual[key], value) for key, value in expected.items())
+    if isinstance(actual, list) and isinstance(expected, list):
+        if len(actual) != len(expected):
+            return False
+        return all(_wildcard_value_match(a, e) for a, e in zip(actual, expected))
+    return actual == expected
 
 
 def _credential_proxy_secret_diff(actual: list[dict[str, Any]], fixture_dir: str) -> dict[str, Any] | None:

@@ -220,6 +220,7 @@ class AgentLoop:
                 self._runner.run(
                     self._tool_use_with_argument_overrides(tu, decisions),
                     into_log=self._session.log,
+                    session=self._session,
                 )
 
             tool_result = next(
