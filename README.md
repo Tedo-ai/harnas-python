@@ -31,7 +31,8 @@ The Python surface includes:
   HumanApproval, sandbox/write, sandbox/network, credential/proxy,
   repetition, timeout, cost_budget
 - Adopter helper APIs: `harnas.runtime.Runtime`,
-  `harnas.transcript.project`, and `harnas.tools.snapshot`
+  `harnas.transcript.project`, `harnas.tools.snapshot`, and
+  cross-session delegation projections in `harnas.projection`
 - MCP adapter package: HTTP and stdio transports, content flattening,
   Harnas tool descriptor translation, and degraded startup handling
 
