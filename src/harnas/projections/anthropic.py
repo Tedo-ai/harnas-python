@@ -11,6 +11,8 @@ from __future__ import annotations
 from typing import Any
 
 from .. import mutations
+from .. import content_blocks
+from ..attachments import AttachmentStore
 from ..log import Log
 
 
@@ -23,11 +25,13 @@ class Anthropic:
         max_tokens: int = DEFAULT_MAX_TOKENS,
         registry: Any | None = None,
         system: str | None = None,
+        attachment_store: AttachmentStore | None = None,
     ) -> None:
         self._model = model
         self._max_tokens = max_tokens
         self._registry = registry
         self._system = system
+        self._attachment_store = attachment_store
 
     def __call__(self, log: Log) -> dict[str, Any]:
         effective = mutations.apply(log)
@@ -71,12 +75,13 @@ class Anthropic:
     def _translate(self, evt) -> tuple[str, dict[str, Any]] | None:
         match evt.type:
             case "user_message" | "summary":
-                return ("user", {"type": "text", "text": evt.payload["text"]})
+                return ("user", self._content_blocks(evt.payload))
             case "assistant_message":
                 blocks = self._reasoning_blocks(evt)
-                text = evt.payload.get("text", "")
-                if text:
-                    blocks.append({"type": "text", "text": text})
+                blocks.extend(
+                    block for block in self._content_blocks(evt.payload)
+                    if not (block.get("type") == "text" and block.get("text", "") == "")
+                )
                 if not blocks:
                     return None
                 return ("assistant", blocks)
@@ -111,6 +116,34 @@ class Anthropic:
                 out["signature"] = block["signature"]
             blocks.append(out)
         return blocks
+
+    def _content_blocks(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
+        rendered = []
+        for block in content_blocks.from_payload(payload):
+            match block.get("type"):
+                case "text":
+                    rendered.append({"type": "text", "text": str(block.get("text", ""))})
+                case "image":
+                    rendered.append(self._media_block("image", block))
+                case "document":
+                    rendered.append(self._media_block("document", block))
+                case _:
+                    raise ValueError(f"unsupported content block type: {block.get('type')}")
+        return rendered
+
+    def _media_block(self, kind: str, block: dict[str, Any]) -> dict[str, Any]:
+        source = dict(block.get("source") or {})
+        if kind == "image" and source.get("kind") == "url":
+            return {"type": "image", "source": {"type": "url", "url": str(source.get("url", ""))}}
+        resolved = content_blocks.resolve_data(block, self._attachment_store)
+        return {
+            "type": kind,
+            "source": {
+                "type": "base64",
+                "media_type": resolved["media_type"],
+                "data": resolved["data"],
+            },
+        }
 
     def _tool_descriptors(self) -> list[dict[str, Any]]:
         return [

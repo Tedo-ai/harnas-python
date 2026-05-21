@@ -11,6 +11,8 @@ import json
 from typing import Any
 
 from .. import mutations
+from .. import content_blocks
+from ..attachments import AttachmentStore
 from ..log import Log
 
 
@@ -20,10 +22,12 @@ class OpenAI:
         model: str,
         registry: Any | None = None,
         system: str | None = None,
+        attachment_store: AttachmentStore | None = None,
     ) -> None:
         self._model = model
         self._registry = registry
         self._system = system
+        self._attachment_store = attachment_store
 
     def __call__(self, log: Log) -> dict[str, Any]:
         effective = mutations.apply(log)
@@ -45,9 +49,9 @@ class OpenAI:
     def _append_event(self, messages: list[dict[str, Any]], evt) -> None:
         match evt.type:
             case "user_message" | "summary":
-                messages.append({"role": "user", "content": evt.payload["text"]})
+                messages.append({"role": "user", "content": self._content(evt.payload)})
             case "assistant_message":
-                messages.append({"role": "assistant", "content": str(evt.payload.get("text", ""))})
+                messages.append({"role": "assistant", "content": self._content(evt.payload)})
             case "tool_use":
                 self._merge_tool_use(messages, evt)
             case "tool_result":
@@ -79,6 +83,28 @@ class OpenAI:
                 prev["content"] = None
         else:
             messages.append({"role": "assistant", "content": None, "tool_calls": [wire_call]})
+
+    def _content(self, payload: dict[str, Any]) -> Any:
+        blocks = content_blocks.from_payload(payload)
+        if len(blocks) == 1 and blocks[0].get("type") == "text":
+            return str(blocks[0].get("text", ""))
+        rendered = []
+        for block in blocks:
+            match block.get("type"):
+                case "text":
+                    rendered.append({"type": "text", "text": str(block.get("text", ""))})
+                case "image":
+                    rendered.append({"type": "image_url", "image_url": {"url": self._image_url(block)}})
+                case _:
+                    raise ValueError(f"unsupported OpenAI content block type: {block.get('type')}")
+        return rendered
+
+    def _image_url(self, block: dict[str, Any]) -> str:
+        source = dict(block.get("source") or {})
+        if source.get("kind") == "url":
+            return str(source.get("url", ""))
+        resolved = content_blocks.resolve_data(block, self._attachment_store)
+        return f"data:{resolved['media_type']};base64,{resolved['data']}"
 
     def _tool_descriptors(self) -> list[dict[str, Any]]:
         return [

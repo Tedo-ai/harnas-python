@@ -142,6 +142,7 @@ def load(
     providers: dict[str, Callable[..., Any]] | None = None,
     stream_providers: dict[str, Callable[..., Any]] | None = None,
     hook_handlers: dict[str, Callable[..., Any]] | None = None,
+    attachment_store: Any | None = None,
 ) -> Loaded:
     manifest = parse_source(source)
     validate(manifest)
@@ -153,6 +154,7 @@ def load(
         api_keys=api_keys or {},
         providers=providers or {},
         stream_providers=stream_providers or {},
+        attachment_store=attachment_store,
     )
     strategies = build_strategies(
         manifest["strategies"],
@@ -319,9 +321,10 @@ def build_provider(
     api_keys: dict[str, str | None],
     providers: dict[str, Callable[..., Any]],
     stream_providers: dict[str, Callable[..., Any]],
+    attachment_store: Any | None = None,
 ) -> dict[str, Any]:
     kind = provider_spec["kind"]
-    projection = projection_for(provider_spec, registry, system)
+    projection = projection_for(provider_spec, registry, system, attachment_store)
     provider = provider_for(provider_spec, api_keys, providers)
     stream_provider = stream_provider_for(provider_spec, api_keys, stream_providers)
     ingestor = ingestor_for(kind)
@@ -333,7 +336,12 @@ def build_provider(
     }
 
 
-def projection_for(provider: dict[str, Any], registry: Registry | None, system: str | None):
+def projection_for(
+    provider: dict[str, Any],
+    registry: Registry | None,
+    system: str | None,
+    attachment_store: Any | None = None,
+):
     kind = provider["kind"]
     if kind in ("mock", "anthropic"):
         return AnthropicProjection(
@@ -341,15 +349,22 @@ def projection_for(provider: dict[str, Any], registry: Registry | None, system: 
             max_tokens=provider["max_tokens"],
             registry=registry,
             system=system,
+            attachment_store=attachment_store,
         )
     if kind in ("openai", "ollama"):
-        return OpenAIProjection(model=provider["model"], registry=registry, system=system)
+        return OpenAIProjection(
+            model=provider["model"],
+            registry=registry,
+            system=system,
+            attachment_store=attachment_store,
+        )
     if kind == "gemini":
         return GeminiProjection(
             model=provider["model"],
             registry=registry,
             system=system,
             thinking_budget=provider.get("thinking_budget", 0),
+            attachment_store=attachment_store,
         )
     raise UnknownProviderError(f"unknown provider kind: {kind!r}")
 

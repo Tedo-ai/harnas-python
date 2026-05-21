@@ -12,6 +12,8 @@ from __future__ import annotations
 from typing import Any
 
 from .. import mutations
+from .. import content_blocks
+from ..attachments import AttachmentStore
 from ..log import Log
 
 THOUGHT_SIGNATURE_KIND = "gemini.thought_signature"
@@ -24,11 +26,13 @@ class Gemini:
         registry: Any | None = None,
         system: str | None = None,
         thinking_budget: int | None = 0,
+        attachment_store: AttachmentStore | None = None,
     ) -> None:
         self._model = model
         self._registry = registry
         self._system = system
         self._thinking_budget = thinking_budget
+        self._attachment_store = attachment_store
 
     def __call__(self, log: Log) -> dict[str, Any]:
         effective = mutations.apply(log)
@@ -59,11 +63,11 @@ class Gemini:
     def _append_event(self, contents: list[dict[str, Any]], evt, next_evt) -> None:
         match evt.type:
             case "user_message" | "summary":
-                contents.append({"role": "user", "parts": [{"text": evt.payload["text"]}]})
+                contents.append({"role": "user", "parts": self._parts(evt.payload)})
             case "assistant_message":
-                text = evt.payload.get("text", "")
-                if text:
-                    contents.append({"role": "model", "parts": [{"text": text}]})
+                parts = self._parts(evt.payload)
+                if parts:
+                    contents.append({"role": "model", "parts": parts})
             case "tool_use":
                 self._append_function_call(contents, evt, self._signature_from(next_evt))
             case "tool_result":
@@ -93,6 +97,26 @@ class Gemini:
             prev["parts"].append(part)
         else:
             contents.append({"role": "model", "parts": [part]})
+
+    def _parts(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
+        parts = []
+        for block in content_blocks.from_payload(payload):
+            match block.get("type"):
+                case "text":
+                    text = str(block.get("text", ""))
+                    if text:
+                        parts.append({"text": text})
+                case "image" | "document":
+                    resolved = content_blocks.resolve_data(block, self._attachment_store)
+                    parts.append({
+                        "inline_data": {
+                            "mime_type": resolved["media_type"],
+                            "data": resolved["data"],
+                        }
+                    })
+                case _:
+                    raise ValueError(f"unsupported Gemini content block type: {block.get('type')}")
+        return parts
 
     def _append_function_response(self, contents: list[dict[str, Any]], evt) -> None:
         if evt.payload.get("error"):
