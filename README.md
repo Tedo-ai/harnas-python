@@ -1,13 +1,13 @@
 # harnas-python
 
 Python implementation of [Harnas](https://github.com/Tedo-ai/harnas) —
-a specification for LLM agent harnesses. Passes 45/45 conformance
+a specification for LLM agent harnesses. Passes 46/46 conformance
 fixtures against the
 [Ruby reference](https://github.com/Tedo-ai/harnas-ruby), participates
 in the 3x3 Session JSONL round-trip matrix, and ships live providers,
 tools, strategies, middleware, and a manifest-driven CLI.
 
-**Version 0.15.0** (2026-05-21). Tracks Harnas spec 0.14.1.
+**Version 0.16.0** (2026-05-21). Tracks Harnas spec 0.16.0.
 
 ## Scope
 
@@ -28,8 +28,8 @@ The Python surface includes:
 - Compaction strategies: MarkerTail, TokenMarkerTail, SummaryTail,
   ToolOutputCap
 - Permission and guard strategies: AlwaysAllow, DenyByName,
-  HumanApproval, sandbox/write, sandbox/network, repetition, timeout,
-  cost_budget
+  HumanApproval, sandbox/write, sandbox/network, credential/proxy,
+  repetition, timeout, cost_budget
 - Adopter helper APIs: `harnas.runtime.Runtime`,
   `harnas.transcript.project`, and `harnas.tools.snapshot`
 - MCP adapter package: HTTP and stdio transports, content flattening,

@@ -142,7 +142,13 @@ DESCRIPTORS = [
         "description": "Fetch a URL via HTTP GET and return the response body as text.",
         "input_schema": {
             "type": "object",
-            "properties": {"url": {"type": "string"}},
+            "properties": {
+                "url": {"type": "string"},
+                "headers": {
+                    "type": "object",
+                    "additionalProperties": {"type": "string"},
+                },
+            },
             "required": ["url"],
         },
     },
@@ -287,10 +293,18 @@ def fetch_url(args: dict[str, Any]) -> str:
     url = _require(args, "url")
     if not (url.startswith("http://") or url.startswith("https://")):
         raise ValueError("only http(s) is supported")
-    with urllib.request.urlopen(url, timeout=30) as response:
+    request = urllib.request.Request(url, headers=_fetch_headers(args))
+    with urllib.request.urlopen(request, timeout=30) as response:
         body = response.read(MAX_FETCH_BYTES).decode("utf-8", errors="replace")
         status = getattr(response, "status", response.getcode())
     return f"HTTP {status}\n{body}"
+
+
+def _fetch_headers(args: dict[str, Any]) -> dict[str, str]:
+    headers = args.get("headers") or {}
+    if not isinstance(headers, dict):
+        raise ValueError("headers must be an object")
+    return {str(key): str(value) for key, value in headers.items()}
 
 
 def load_skill(args: dict[str, Any], *, config: dict[str, Any] | None = None) -> str:

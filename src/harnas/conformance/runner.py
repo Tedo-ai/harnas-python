@@ -30,6 +30,7 @@ STRATEGY_CLASSES = {
     "Permission::DenyByName": ("..strategies.permission.deny_by_name", "DenyByName"),
     "sandbox/write": ("..strategies.sandbox.write", "Write"),
     "sandbox/network": ("..strategies.sandbox.network", "Network"),
+    "credential/proxy": ("..strategies.credential.proxy", "Proxy"),
     "guard/repetition": ("..strategies.guard.repetition", "Repetition"),
     "guard/timeout": ("..strategies.guard.timeout", "Timeout"),
     "guard/health": ("..strategies.guard.health", "Health"),
@@ -82,6 +83,8 @@ def run(fixture_dir: str) -> Result:
             actual_strategy_events,
             _load_expected(expected_strategy_events_path),
         )
+    if diff is None:
+        diff = _credential_proxy_secret_diff(actual, fixture_dir)
     return Result(
         fixture=os.path.basename(fixture_dir.rstrip("/")),
         passed=diff is None,
@@ -360,6 +363,8 @@ def _tool_handler(handler_name: str):
         return _builtin_handler(handler_name)
     if handler_name == "harnas.builtin.bash_session":
         return _builtin_bash_session_handler()
+    if handler_name == "harnas.builtin.fetch_url":
+        return _fixture_fetch_url_handler()
     return _conformance_stub_handler(handler_name)
 
 
@@ -379,6 +384,19 @@ def _builtin_bash_session_handler():
     from ..tools.builtin import bash_session
 
     return bash_session
+
+
+def _fixture_fetch_url_handler():
+    def fetch_url(args: dict[str, Any]) -> str:
+        if args.get("url") == "https://api.example.com/data":
+            headers = args.get("headers") or {}
+            if headers.get("Authorization") != "Bearer SECRET-DO-NOT-LOG":
+                raise RuntimeError("fetch_url missing credential proxy Authorization header")
+            return "fetched OK"
+        encoded = json.dumps(args, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
+        return f"[conformance stub: harnas.builtin.fetch_url({encoded})]"
+
+    return fetch_url
 
 
 def _conformance_stub_handler(handler_name: str):
@@ -470,6 +488,22 @@ def _first_mismatch(actual: list, expected: list) -> dict[str, Any] | None:
         if a != e:
             return {"at_seq": i, "actual": a, "expected": e}
     return None
+
+
+def _credential_proxy_secret_diff(actual: list[dict[str, Any]], fixture_dir: str) -> dict[str, Any] | None:
+    if os.path.basename(fixture_dir.rstrip("/")) != "with-credential-proxy-injection":
+        return None
+    serialized = "\n".join(
+        json.dumps(event, separators=(",", ":"), ensure_ascii=False)
+        for event in actual
+    )
+    if "SECRET-DO-NOT-LOG" not in serialized:
+        return None
+    return {
+        "at_seq": "redaction",
+        "actual": "serialized log contains SECRET-DO-NOT-LOG",
+        "expected": "serialized log must not contain SECRET-DO-NOT-LOG",
+    }
 
 
 def _read(path: str) -> str:

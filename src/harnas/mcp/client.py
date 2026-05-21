@@ -7,7 +7,7 @@ import sys
 
 PROTOCOL_VERSION = "2024-11-05"
 CLIENT_NAME = "harnas-python"
-CLIENT_VERSION = "0.15.0"
+CLIENT_VERSION = "0.16.0"
 DEFAULT_TIMEOUT = 30.0
 
 
@@ -101,4 +101,3 @@ def connect(
 
         return StdioClient(command=command, args=args or [], server_name=server_name, env=env, timeout=timeout)
     raise ValueError("mcp.connect: must provide either url or command")
-

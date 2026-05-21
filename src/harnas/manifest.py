@@ -431,6 +431,7 @@ STRATEGY_CLASSES = {
     "Permission::HumanApproval": ("harnas.strategies.permission.human_approval", "HumanApproval"),
     "sandbox/write": ("harnas.strategies.sandbox.write", "Write"),
     "sandbox/network": ("harnas.strategies.sandbox.network", "Network"),
+    "credential/proxy": ("harnas.strategies.credential.proxy", "Proxy"),
     "guard/repetition": ("harnas.strategies.guard.repetition", "Repetition"),
     "guard/timeout": ("harnas.strategies.guard.timeout", "Timeout"),
     "guard/health": ("harnas.strategies.guard.health", "Health"),

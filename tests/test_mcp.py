@@ -161,7 +161,7 @@ for line in sys.stdin:
     elif req["method"] == "tools/list":
         time.sleep(1)
 """)
-    client = mcp.StdioClient(command=sys.executable, args=[str(slow)], server_name="slow", timeout=0.02)
+    client = mcp.StdioClient(command=sys.executable, args=[str(slow)], server_name="slow", timeout=0.2)
     try:
         client.initialize_session()
         with pytest.raises(mcp.TimeoutError):

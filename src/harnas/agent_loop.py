@@ -189,7 +189,10 @@ class AgentLoop:
                     },
                 )
             else:
-                self._runner.run(tu, into_log=self._session.log)
+                self._runner.run(
+                    self._tool_use_with_argument_overrides(tu, decisions),
+                    into_log=self._session.log,
+                )
 
             tool_result = next(
                 (
@@ -207,6 +210,26 @@ class AgentLoop:
                 denied=denied is not None,
             )
         return pending
+
+    def _tool_use_with_argument_overrides(self, tool_use_event, decisions: list) -> Event:
+        override = next(
+            (
+                decision["arguments"]
+                for decision in decisions
+                if isinstance(decision, dict) and isinstance(decision.get("arguments"), dict)
+            ),
+            None,
+        )
+        if override is None:
+            return tool_use_event
+        payload = dict(tool_use_event.payload)
+        payload["arguments"] = override
+        return Event(
+            seq=tool_use_event.seq,
+            id=tool_use_event.id,
+            type=tool_use_event.type,
+            payload=payload,
+        )
 
     def _pending_tool_uses(self) -> list:
         fulfilled = {
