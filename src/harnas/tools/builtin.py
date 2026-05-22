@@ -10,6 +10,7 @@ import shlex
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 import urllib.request
 import uuid
@@ -25,6 +26,39 @@ DEFAULT_BASH_SESSION_MAX_OUTPUT_BYTES = 64 * 1024
 ANSI_PATTERN = re.compile(r"\x1b\[[0-9;]*[mGKHF]|\r")
 ENV_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _BASH_SESSION_REGISTRY = None
+
+
+def _default_bash_session_shell_type() -> str:
+    if sys.platform != "win32":
+        return "posix"
+    if shutil.which("pwsh") or shutil.which("powershell.exe"):
+        return "powershell"
+    return "cmd"
+
+
+def _resolve_bash_session_shell(config: dict[str, Any]) -> tuple[str, str]:
+    shell = str(config.get("shell") or "")
+    if not shell or shell == "auto":
+        if sys.platform == "win32":
+            shell = shutil.which("pwsh") or shutil.which("powershell.exe") or shutil.which("cmd.exe") or "cmd.exe"
+        else:
+            shell = "bash"
+    if shell == "bash" and shutil.which("bash") is None:
+        shell = "sh"
+
+    shell_type = str(config.get("shell_type") or "")
+    if not shell_type or shell_type == "auto":
+        if sys.platform != "win32":
+            shell_type = "posix"
+        elif "powershell" in shell.lower() or "pwsh" in shell.lower():
+            shell_type = "powershell"
+        else:
+            shell_type = "cmd"
+    return shell, shell_type
+
+
+def _powershell_quote(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
 
 
 def handlers() -> dict[str, Callable[[dict[str, Any]], str]]:
@@ -183,6 +217,11 @@ DESCRIPTORS = [
                     "additionalProperties": {"type": "string"},
                 },
             },
+        },
+        "config": {
+            "shell": "auto",
+            "shell_type": _default_bash_session_shell_type(),
+            "max_output_bytes": DEFAULT_BASH_SESSION_MAX_OUTPUT_BYTES,
         },
     },
     {
@@ -440,20 +479,21 @@ class BashSession:
         self.current: BashCommand | None = None
         self.closed = False
 
-        self.shell = str(config.get("shell") or "bash")
-        if self.shell == "bash" and shutil.which("bash") is None:
-            self.shell = "sh"
+        self.shell, self.shell_type = _resolve_bash_session_shell(config)
         cwd = str(config.get("cwd") or ".")
-        self.process = subprocess.Popen(
-            [self.shell],
-            cwd=str(Path(cwd).resolve()),
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-            start_new_session=True,
-        )
+        popen_kwargs: dict[str, Any] = {
+            "cwd": str(Path(cwd).resolve()),
+            "stdin": subprocess.PIPE,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+            "text": True,
+            "bufsize": 1,
+        }
+        if sys.platform == "win32":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            popen_kwargs["start_new_session"] = True
+        self.process = subprocess.Popen([self.shell], **popen_kwargs)
         assert self.process.stdin is not None
         assert self.process.stdout is not None
         assert self.process.stderr is not None
@@ -473,11 +513,7 @@ class BashSession:
             current.stderr_start = self.stderr.offset()
             self.current = current
             command = self._command_with_env(command, env)
-            framed = (
-                f"\n{{ {command}\n}} </dev/null; __harnas_status=$?; "
-                f"printf '__HARNAS_ERR_DONE_{current.token}\\n' >&2; "
-                f"printf '__HARNAS_DONE_{current.token}:%s\\n' \"$__harnas_status\"\n"
-            )
+            framed = self._framed_command(command, current.token)
             try:
                 self.stdin.write(framed)
                 self.stdin.flush()
@@ -496,6 +532,16 @@ class BashSession:
     def _command_with_env(self, command: str, env: dict[str, str]) -> str:
         if not env:
             return command
+        if self.shell_type == "powershell":
+            assignments = [
+                f"$__harnas_old_{key}=$env:{key}; $env:{key}={_powershell_quote(env[key])}"
+                for key in sorted(env)
+            ]
+            restores = [f"$env:{key}=$__harnas_old_{key}" for key in sorted(env)]
+            return f"{'; '.join(assignments)}; try {{ {command} }} finally {{ {'; '.join(restores)} }}"
+        if self.shell_type == "cmd":
+            assignments = [f'set "{key}={env[key]}"' for key in sorted(env)]
+            return " & ".join(["setlocal", *assignments, command, "endlocal"])
         assignments = [
             f"{key}={shlex.quote(env[key])}"
             for key in sorted(env)
@@ -519,7 +565,7 @@ class BashSession:
             self._killpg(signal.SIGTERM)
             self.condition.wait_for(lambda: current.done, 3)
             if not current.done:
-                self._killpg(signal.SIGKILL)
+                self._killpg(getattr(signal, "SIGKILL", signal.SIGTERM))
                 self.condition.wait_for(lambda: current.done)
             self.closed = True
             return self._snapshot("killed", None, current)
@@ -527,7 +573,7 @@ class BashSession:
     def close(self) -> None:
         with self.condition:
             self.closed = True
-            self._killpg(signal.SIGKILL)
+            self._killpg(getattr(signal, "SIGKILL", signal.SIGTERM))
 
     def _read_stdout(self, stream: Any) -> None:
         for line in stream:
@@ -591,9 +637,32 @@ class BashSession:
 
     def _killpg(self, sig: int) -> None:
         try:
-            os.killpg(self.process.pid, sig)
+            if sys.platform == "win32":
+                self.process.kill() if sig == signal.SIGKILL else self.process.terminate()
+            else:
+                os.killpg(self.process.pid, sig)
         except OSError:
             pass
+
+    def _framed_command(self, command: str, token: str) -> str:
+        if self.shell_type == "powershell":
+            return (
+                f"\n& {{ {command} }}; $__harnas_status=$LASTEXITCODE; "
+                "if ($null -eq $__harnas_status) { $__harnas_status=0 }; "
+                f"[Console]::Error.WriteLine('__HARNAS_ERR_DONE_{token}'); "
+                f"[Console]::Out.WriteLine('__HARNAS_DONE_{token}:' + $__harnas_status)\n"
+            )
+        if self.shell_type == "cmd":
+            return (
+                f"\r\n{command}\r\nset __harnas_status=%ERRORLEVEL%\r\n"
+                f"echo __HARNAS_ERR_DONE_{token} 1>&2\r\n"
+                f"echo __HARNAS_DONE_{token}:%__harnas_status%\r\n"
+            )
+        return (
+            f"\n{{ {command}\n}} </dev/null; __harnas_status=$?; "
+            f"printf '__HARNAS_ERR_DONE_{token}\\n' >&2; "
+            f"printf '__HARNAS_DONE_{token}:%s\\n' \"$__harnas_status\"\n"
+        )
 
     def _snapshot(self, status: str, exit_code: int | None, command: BashCommand | None) -> dict[str, Any]:
         return {

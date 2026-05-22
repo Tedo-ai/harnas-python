@@ -46,6 +46,7 @@ def test_builtin_descriptors_expose_canonical_tool_schemas():
         assert by_name[name]["description"]
         assert by_name[name]["input_schema"]
     assert by_name["grep"]["input_schema"]["required"] == ["pattern", "path"]
+    assert by_name["bash_session"]["config"]["shell_type"] in {"posix", "powershell", "cmd"}
 
 
 def test_builtin_read_write_edit_file(tmp_path):

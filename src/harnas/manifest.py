@@ -315,10 +315,23 @@ def build_registry(
             description=tool_def["description"],
             input_schema=tool_def["input_schema"],
             handler=tool_handlers[handler_name],
-            config=dict(tool_def.get("config", {})),
+            config=_effective_tool_config(tool_def),
             handler_name=handler_name,
         ))
     return registry
+
+
+def _effective_tool_config(tool_def: dict[str, Any]) -> dict[str, Any]:
+    config = dict(tool_def.get("config", {}))
+    if tool_def["handler"] != "harnas.builtin.bash_session":
+        return config
+    from .tools.builtin import _default_bash_session_shell_type
+
+    if str(config.get("shell") or "") == "":
+        config["shell"] = "auto"
+    if str(config.get("shell_type") or "") in {"", "auto"}:
+        config["shell_type"] = _default_bash_session_shell_type()
+    return config
 
 
 def manifest_snapshot(manifest: dict[str, Any]) -> dict[str, Any]:

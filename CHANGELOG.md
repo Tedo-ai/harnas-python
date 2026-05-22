@@ -7,6 +7,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and Harnas adheres to [Semantic Versioning](https://semver.org/) on
 the specification as a whole.
 
+## [0.18.2] — 2026-05-22
+
+### Added
+
+- Added `shell_type` resolution for `harnas.builtin.bash_session` tool
+  config and validated against fixtures version `0.18.2`: 62/62.
+
+### Changed
+
+- Audited `bash_session` process handling for Windows portability and
+  guarded Unix-only process-group setup/signaling behind platform checks.
+- Bumped Python package metadata and `harnas.__version__` to 0.18.2.
+- Lockstep patch release driven by AgentStaple's Windows preview
+  packaging work.
+
 ## [0.18.1] — 2026-05-22
 
 ### Added
@@ -400,6 +415,7 @@ initial buffered conformance fixtures byte-identically with the Ruby
 reference, while intentionally remaining a conformance-first,
 standard-library-only port rather than a full peer implementation.
 
+[0.18.2]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.18.2
 [0.18.1]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.18.1
 [0.18.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.18.0
 [0.17.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.17.0

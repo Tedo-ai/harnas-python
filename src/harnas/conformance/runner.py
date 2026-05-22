@@ -17,9 +17,11 @@ from typing import Any
 
 from ..agent_loop import AgentLoop
 from ..attachments import MemoryStore
+from ..manifest import _effective_tool_config
 from ..session import Session
 from ..tools.registry import Registry
 from ..tools.runner import Runner
+from ..tools.snapshot import descriptors as tool_descriptors
 from ..tools.tool import Tool
 from ..observation import DeltaLogger
 from .. import projection
@@ -67,11 +69,12 @@ def run(fixture_dir: str) -> Result:
     expected_deltas_path = os.path.join(fixture_dir, "expected-deltas.jsonl")
     expected_strategy_events_path = os.path.join(fixture_dir, "expected-strategy-events.jsonl")
     expected_spawn_children_path = os.path.join(fixture_dir, "expected-spawn-children.json")
+    expected_tool_descriptors_path = os.path.join(fixture_dir, "expected-tool-descriptors.json")
 
     cwd = os.getcwd()
     try:
         os.chdir(fixture_dir)
-        actual, actual_deltas, actual_strategy_events = _run_agent_with_sidecars(
+        actual, actual_deltas, actual_strategy_events, actual_tool_descriptors = _run_agent_with_sidecars(
             manifest,
             script,
             inputs,
@@ -89,6 +92,11 @@ def run(fixture_dir: str) -> Result:
         diff = _first_mismatch(
             actual_strategy_events,
             _load_expected(expected_strategy_events_path),
+        )
+    if diff is None and os.path.exists(expected_tool_descriptors_path):
+        diff = _first_mismatch(
+            actual_tool_descriptors,
+            json.loads(_read(expected_tool_descriptors_path)),
         )
     if diff is None:
         diff = _credential_proxy_secret_diff(actual, fixture_dir)
@@ -195,7 +203,7 @@ def _run_agent_with_sidecars(
     expected_deltas_path: str | None = None,
     expected_strategy_events_path: str | None = None,
     expected_spawn_children_path: str | None = None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     needs_deltas = expected_deltas_path and os.path.exists(expected_deltas_path)
     needs_strategy_events = (
         expected_strategy_events_path
@@ -210,7 +218,7 @@ def _run_agent_with_sidecars(
         session = run_session(
             manifest, script, inputs, streaming=streaming, attachment_store=attachment_store
         )
-        return _serialize_log(session.log), [], []
+        return _serialize_log(session.log), [], [], session.metadata.get("tools", [])
     with tempfile.TemporaryDirectory(prefix="harnas-deltas") as tmp:
         delta_path = os.path.join(tmp, "session.deltas.jsonl")
         strategy_events_path = os.path.join(tmp, "session.strategy-events.jsonl")
@@ -229,6 +237,7 @@ def _run_agent_with_sidecars(
             _serialize_log(session.log),
             _load_expected(delta_path) if needs_deltas else [],
             _load_expected(strategy_events_path) if needs_strategy_events else [],
+            session.metadata.get("tools", []),
         )
 
 
@@ -251,6 +260,7 @@ def run_session(
         "manifest_name": manifest["name"],
         "manifest": json.loads(json.dumps(manifest, ensure_ascii=False)),
     })
+    session.metadata["tools"] = tool_descriptors(registry)
     if delta_path is not None:
         DeltaLogger(delta_path, session.observation)
     if strategy_events_path is not None:
@@ -519,7 +529,7 @@ def _build_registry(tools_spec: list[dict[str, Any]]) -> Registry:
             description=tool_def["description"],
             input_schema=tool_def["input_schema"],
             handler=handler,
-            config=dict(tool_def.get("config", {})),
+            config=_effective_tool_config(tool_def),
             handler_name=handler_name,
         ))
     return registry
