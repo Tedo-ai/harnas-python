@@ -107,6 +107,7 @@ class Session:
                 fh.write(json.dumps({
                     "seq": event.seq,
                     "id": event.id,
+                    "timestamp": event.timestamp,
                     "type": event.type,
                     "payload": event.payload,
                 }, separators=(",", ":"), ensure_ascii=False))
@@ -135,6 +136,7 @@ class Session:
                 id=row["id"],
                 type=row["type"],
                 payload=row["payload"],
+                timestamp=row.get("timestamp"),
             ))
         return cls(
             id=header["id"],

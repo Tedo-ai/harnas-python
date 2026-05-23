@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .. import usage as usage_helpers
+
 STOP_REASON_MAP = {
     "end_turn": "end_turn",
     "max_tokens": "max_tokens",
@@ -32,14 +34,16 @@ class Anthropic:
         return events
 
     def _normalize_usage(self, wire_usage: dict[str, Any]) -> dict[str, int]:
-        return {
-            "input_tokens": wire_usage.get("input_tokens", 0),
-            "output_tokens": wire_usage.get("output_tokens", 0),
-        }
+        return usage_helpers.normalize(wire_usage)
 
     def _assistant_event(self, content: list[dict[str, Any]], stop: str, usage: dict[str, int]) -> dict[str, Any]:
         text = "".join(b.get("text", "") for b in content if b.get("type") == "text")
-        payload: dict[str, Any] = {"text": text, "stop_reason": stop, "usage": usage}
+        payload: dict[str, Any] = {
+            "text": text,
+            "stop_reason": stop,
+            "usage": usage,
+            "provider": "anthropic",
+        }
         reasoning = self._reasoning_blocks(content)
         if reasoning:
             payload["reasoning"] = reasoning

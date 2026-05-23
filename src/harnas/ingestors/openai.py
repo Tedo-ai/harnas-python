@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from .. import usage as usage_helpers
+
 FINISH_REASON_MAP = {
     "stop": "end_turn",
     "length": "max_tokens",
@@ -34,6 +36,8 @@ class OpenAI:
             "text": str(message.get("content") or ""),
             "stop_reason": stop,
             "usage": usage,
+            "provider": "openai",
+            "model": str(response.get("model") or ""),
         }
         reasoning = self._reasoning_blocks(message)
         if reasoning:
@@ -45,10 +49,7 @@ class OpenAI:
         return events
 
     def _normalize_usage(self, wire_usage: dict[str, Any]) -> dict[str, int]:
-        return {
-            "input_tokens": wire_usage.get("prompt_tokens", 0),
-            "output_tokens": wire_usage.get("completion_tokens", 0),
-        }
+        return usage_helpers.normalize(wire_usage)
 
     def _tool_use_event(self, call: dict[str, Any]) -> dict[str, Any]:
         fn = call.get("function") or {}

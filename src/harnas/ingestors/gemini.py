@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .. import usage as usage_helpers
+
 FINISH_REASON_MAP = {
     "STOP": "end_turn",
     "MAX_TOKENS": "max_tokens",
@@ -50,6 +52,7 @@ class Gemini:
     def _assistant_event(self, parts: list[dict[str, Any]], stop: str, usage: dict[str, int]) -> dict[str, Any]:
         text = "".join(p.get("text", "") for p in parts if "text" in p)
         payload: dict[str, Any] = {"text": text, "stop_reason": stop, "usage": usage}
+        payload["provider"] = "gemini"
         reasoning = self._reasoning_blocks(parts)
         if reasoning:
             payload["reasoning"] = reasoning
@@ -97,7 +100,4 @@ class Gemini:
         return FINISH_REASON_MAP.get(wire_finish, "other")
 
     def _normalize_usage(self, wire_usage: dict[str, Any]) -> dict[str, int]:
-        return {
-            "input_tokens": wire_usage.get("promptTokenCount", 0),
-            "output_tokens": wire_usage.get("candidatesTokenCount", 0),
-        }
+        return usage_helpers.normalize(wire_usage)

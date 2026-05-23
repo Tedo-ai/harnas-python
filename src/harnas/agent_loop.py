@@ -14,6 +14,7 @@ from .capabilities import CapabilityMismatchError
 from .providers.retry_policy import RetryPolicy
 from .session import Session
 from .event import Event
+from . import usage as usage_helpers
 from .hooks import TurnFailed
 
 DEFAULT_MAX_TURNS = 10
@@ -113,6 +114,7 @@ class AgentLoop:
                     response = self._provider(request)
                     events = self._ingestor(response)
                     for evt in events:
+                        self._stamp_assistant_identity(evt, request)
                         self._append_event(evt)
                 return True
             except TurnFailed:
@@ -188,7 +190,20 @@ class AgentLoop:
             if self._on_stream_event is not None and event.type in STREAM_DELTA_TYPES:
                 self._on_stream_event(event)
         else:
+            self._stamp_assistant_identity(evt, {})
             self._session.log.append(type=evt["type"], payload=evt["payload"])
+
+    def _stamp_assistant_identity(self, evt: dict[str, Any], request: dict[str, Any]) -> None:
+        if evt.get("type") != "assistant_message":
+            return
+        payload = evt.setdefault("payload", {})
+        payload["usage"] = usage_helpers.normalize(payload.get("usage") or {})
+        if not payload.get("provider"):
+            provider = self._provider_kind()
+            if provider != "unknown":
+                payload["provider"] = provider
+        if not payload.get("model") and request.get("model"):
+            payload["model"] = request["model"]
 
     def _dispatch_pending_tools(self) -> list:
         if self._runner is None:
@@ -213,7 +228,11 @@ class AgentLoop:
                         "tool_use_id": tu.payload["id"],
                         "output": None,
                         "error": f"denied by hook: {reason}",
-                        "approval": {"decision": "rejected", "reason": reason},
+                        "approval": {
+                            "decision": "rejected",
+                            "rule_matched": reason,
+                            "applied_diff": None,
+                        },
                     },
                 )
             else:

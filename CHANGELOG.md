@@ -7,6 +7,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and Harnas adheres to [Semantic Versioning](https://semver.org/) on
 the specification as a whole.
 
+## [0.19.0] — 2026-05-24
+
+### Added
+
+- Added UTC ISO 8601 timestamps to Log events and preserved timestamps
+  across Session save/load.
+- Added canonical assistant usage metadata with total/cache/reasoning
+  token fields, raw provider usage, and provenance.
+- Added provider/model identity on assistant provider-response events.
+- Added optional `tool_result.payload.approval` metadata with the v0.19
+  approval decision shape.
+
+### Changed
+
+- Lockstep spec release. Validated against fixtures version `0.19.0`:
+  65/65.
+- Bumped Python package metadata, MCP client version, and
+  `harnas.__version__` to 0.19.0.
+
 ## [0.18.2] — 2026-05-22
 
 ### Added
@@ -415,6 +434,7 @@ initial buffered conformance fixtures byte-identically with the Ruby
 reference, while intentionally remaining a conformance-first,
 standard-library-only port rather than a full peer implementation.
 
+[0.19.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.19.0
 [0.18.2]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.18.2
 [0.18.1]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.18.1
 [0.18.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.18.0

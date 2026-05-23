@@ -18,3 +18,4 @@ class Event:
     id: str
     type: str
     payload: dict[str, Any] = field(default_factory=dict)
+    timestamp: str | None = None

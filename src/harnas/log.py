@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime, timezone
 from typing import Any, Iterator
 
 from .event import Event
@@ -37,7 +38,13 @@ class Log:
         """Append a new Event. Returns the event with seq + id assigned."""
         seq = len(self._events)
         digest = hashlib.sha256(json.dumps(payload).encode()).hexdigest()[:12]
-        event = Event(seq=seq, id=f"evt_{seq}_{digest}", type=type, payload=payload)
+        event = Event(
+            seq=seq,
+            id=f"evt_{seq}_{digest}",
+            type=type,
+            payload=payload,
+            timestamp=datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z"),
+        )
         self._events.append(event)
         if self.observation is not None:
             self.observation.emit("event_appended", event=event, log_size=len(self._events))
@@ -56,6 +63,7 @@ class Log:
                 fh.write(json.dumps({
                     "seq": event.seq,
                     "id": event.id,
+                    "timestamp": event.timestamp,
                     "type": event.type,
                     "payload": event.payload,
                 }))
@@ -75,5 +83,6 @@ class Log:
                     id=row["id"],
                     type=row["type"],
                     payload=row["payload"],
+                    timestamp=row.get("timestamp"),
                 ))
         return log

@@ -308,6 +308,11 @@ def run_session(
                     raise RuntimeError("manifest snapshot mismatch")
             continue
 
+        if isinstance(input_item, dict) and "append_events" in input_item:
+            for event in input_item["append_events"]:
+                session.log.append(type=event["type"], payload=_normalize(event["payload"]))
+            continue
+
         if isinstance(input_item, dict) and "content" in input_item:
             session.log.append(type="user_message", payload={"content": input_item["content"]})
         else:
@@ -652,7 +657,15 @@ def _load_expected(path: str) -> list[dict[str, Any]]:
 
 
 def _serialize_log(log) -> list[dict[str, Any]]:
-    return [_normalize({"seq": e.seq, "type": e.type, "payload": e.payload}) for e in log]
+    return [
+        _normalize({
+            "seq": e.seq,
+            "timestamp": e.timestamp,
+            "type": e.type,
+            "payload": e.payload,
+        })
+        for e in log
+    ]
 
 
 def _normalize(value: Any) -> Any:
@@ -674,9 +687,39 @@ def _first_mismatch(actual: list, expected: list) -> dict[str, Any] | None:
 
 
 def _wildcard_match(actual: Any, expected: Any) -> bool:
+    actual = _normalize_actual_for_expected(actual, expected)
     if "<generated>" not in json.dumps(expected, ensure_ascii=False):
         return actual == expected
     return _wildcard_value_match(actual, expected)
+
+
+def _normalize_actual_for_expected(actual: Any, expected: Any) -> Any:
+    if not isinstance(actual, dict) or not isinstance(expected, dict):
+        return actual
+    actual = dict(actual)
+    if "timestamp" not in expected:
+        actual.pop("timestamp", None)
+    if isinstance(actual.get("payload"), dict) and isinstance(expected.get("payload"), dict):
+        actual["payload"] = _filter_payload_for_expected(actual["payload"], expected["payload"])
+    return actual
+
+
+def _filter_payload_for_expected(actual: dict[str, Any], expected: dict[str, Any]) -> dict[str, Any]:
+    filtered = {key: value for key, value in actual.items() if key in expected}
+    if isinstance(expected.get("usage"), dict) and isinstance(actual.get("usage"), dict):
+        filtered["usage"] = _filter_map_for_expected(actual["usage"], expected["usage"])
+    return filtered
+
+
+def _filter_map_for_expected(actual: dict[str, Any], expected: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key, expected_value in expected.items():
+        actual_value = actual.get(key)
+        if isinstance(expected_value, dict) and isinstance(actual_value, dict):
+            out[key] = _filter_map_for_expected(actual_value, expected_value)
+        else:
+            out[key] = actual_value
+    return out
 
 
 def _wildcard_value_match(actual: Any, expected: Any) -> bool:
