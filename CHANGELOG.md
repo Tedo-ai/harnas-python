@@ -7,6 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and Harnas adheres to [Semantic Versioning](https://semver.org/) on
 the specification as a whole.
 
+## [0.19.2] — 2026-06-01
+
+### Changed
+
+- Lockstep spec patch release. Validated against fixtures version
+  `0.19.2`: 69/69.
+- Confirmed projections preserve assistant text alongside co-occurring
+  tool calls for Anthropic, OpenAI, and Gemini.
+- Bumped Python package metadata, MCP client version, and
+  `harnas.__version__` to 0.19.2.
+
 ## [0.19.1] — 2026-05-31
 
 ### Changed
@@ -445,6 +456,7 @@ initial buffered conformance fixtures byte-identically with the Ruby
 reference, while intentionally remaining a conformance-first,
 standard-library-only port rather than a full peer implementation.
 
+[0.19.2]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.19.2
 [0.19.1]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.19.1
 [0.19.0]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.19.0
 [0.18.2]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.18.2
