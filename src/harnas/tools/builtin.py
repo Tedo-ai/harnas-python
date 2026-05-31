@@ -62,6 +62,7 @@ def _powershell_quote(value: str) -> str:
 
 
 def handlers() -> dict[str, Callable[[dict[str, Any]], str]]:
+    bash_sessions = BashSessionRegistry()
     return {
         "harnas.builtin.read_file": read_file,
         "harnas.builtin.write_file": write_file,
@@ -73,7 +74,7 @@ def handlers() -> dict[str, Callable[[dict[str, Any]], str]]:
         "harnas.builtin.fetch_url": fetch_url,
         "harnas.builtin.spawn_agent": spawn_agent,
         "harnas.builtin.load_skill": load_skill,
-        "harnas.builtin.bash_session": _bash_session_handler(),
+        "harnas.builtin.bash_session": bash_sessions.handle,
     }
 
 

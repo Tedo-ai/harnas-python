@@ -100,6 +100,15 @@ def run(fixture_dir: str) -> Result:
         )
     if diff is None:
         diff = _credential_proxy_secret_diff(actual, fixture_dir)
+    if diff is None:
+        diff = _isolation_repeat_diff(
+            fixture_dir,
+            manifest,
+            script,
+            inputs,
+            streaming,
+            expected,
+        )
     return Result(
         fixture=os.path.basename(fixture_dir.rstrip("/")),
         passed=diff is None,
@@ -107,6 +116,42 @@ def run(fixture_dir: str) -> Result:
         expected=expected,
         diff=diff,
     )
+
+
+def _isolation_repeat_diff(
+    fixture_dir: str,
+    manifest: dict[str, Any],
+    script: list,
+    inputs: list,
+    streaming: bool,
+    expected: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    path = os.path.join(fixture_dir, "isolation.json")
+    if not os.path.exists(path):
+        return None
+    repeat = int(json.loads(_read(path)).get("repeat", 1))
+    if repeat < 2:
+        return None
+    cwd = os.getcwd()
+    try:
+        os.chdir(fixture_dir)
+        for index in range(1, repeat):
+            actual, _actual_deltas, _actual_strategy_events, _actual_tool_descriptors = _run_agent_with_sidecars(
+                manifest,
+                script,
+                inputs,
+                streaming=streaming,
+            )
+            diff = _first_mismatch(actual, expected)
+            if diff is not None:
+                return {
+                    "at_seq": f"repeat {index + 1}",
+                    "actual": diff,
+                    "expected": None,
+                }
+    finally:
+        os.chdir(cwd)
+    return None
 
 
 def _run_projection_fixture(fixture_dir: str) -> Result:
