@@ -7,6 +7,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and Harnas adheres to [Semantic Versioning](https://semver.org/) on
 the specification as a whole.
 
+## [0.19.4] — 2026-06-03
+
+### Changed
+
+- Lockstep spec patch release. Validated against fixtures version
+  `0.19.4`: 70/70.
+- Enforced §19's dense Event `seq` invariant when loading Session
+  JSONL, failing loudly on duplicate, gapped, or reordered rows.
+- Confirmed file-backed loading already fails loudly on torn final
+  JSONL rows, satisfying the scoped S8 no-silent-corruption law.
+- Bumped Python package metadata, MCP client version, and
+  `harnas.__version__` to 0.19.4.
+
 ## [0.19.3] — 2026-06-01
 
 ### Changed
@@ -470,6 +483,7 @@ initial buffered conformance fixtures byte-identically with the Ruby
 reference, while intentionally remaining a conformance-first,
 standard-library-only port rather than a full peer implementation.
 
+[0.19.4]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.19.4
 [0.19.3]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.19.3
 [0.19.2]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.19.2
 [0.19.1]: https://github.com/Tedo-ai/harnas-python/releases/tag/v0.19.1

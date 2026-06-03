@@ -1,5 +1,6 @@
 from harnas.runtime import Runtime, default_attachment_root
 from harnas.session import Session
+import pytest
 
 
 def manifest():
@@ -63,3 +64,46 @@ def test_session_delegation_metadata_round_trips(tmp_path):
         "session_id": "ses_parent",
         "spawn_id": "spn_parent",
     }
+
+
+def test_session_load_fails_loudly_on_torn_final_event_row(tmp_path):
+    path = tmp_path / "session.jsonl"
+    path.write_text(
+        '\n'.join([
+            '{"__session__":true,"id":"ses_test","metadata":{}}',
+            '{"seq":0,"id":"evt_0","timestamp":"2026-06-01T00:00:00Z","type":"user_message","payload":{"text":"a"}}',
+        ])
+        + '\n{"seq":1,"id":"evt_1","timestamp":"2026-06-01T00:00:01Z","type":"user_message","payload":{"text":"b"}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(Exception):
+        Session.load(str(path))
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        [
+            '{"seq":0,"id":"evt_0","timestamp":"2026-06-01T00:00:00Z","type":"user_message","payload":{"text":"a"}}',
+            '{"seq":0,"id":"evt_dup","timestamp":"2026-06-01T00:00:01Z","type":"user_message","payload":{"text":"b"}}',
+        ],
+        [
+            '{"seq":0,"id":"evt_0","timestamp":"2026-06-01T00:00:00Z","type":"user_message","payload":{"text":"a"}}',
+            '{"seq":2,"id":"evt_2","timestamp":"2026-06-01T00:00:01Z","type":"user_message","payload":{"text":"b"}}',
+        ],
+        [
+            '{"seq":1,"id":"evt_1","timestamp":"2026-06-01T00:00:00Z","type":"user_message","payload":{"text":"a"}}',
+            '{"seq":0,"id":"evt_0","timestamp":"2026-06-01T00:00:01Z","type":"user_message","payload":{"text":"b"}}',
+        ],
+    ],
+)
+def test_session_load_rejects_duplicate_gapped_and_reordered_seq_rows(tmp_path, rows):
+    path = tmp_path / "session.jsonl"
+    path.write_text(
+        '\n'.join(['{"__session__":true,"id":"ses_test","metadata":{}}', *rows]) + '\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="invalid event seq"):
+        Session.load(str(path))

@@ -78,6 +78,11 @@ class Log:
                 if not line:
                     continue
                 row = json.loads(line)
+                expected_seq = len(log._events)
+                if row["seq"] != expected_seq:
+                    raise ValueError(
+                        f"invalid event seq at row {expected_seq}: got {row['seq']}, want {expected_seq}"
+                    )
                 log._events.append(Event(
                     seq=row["seq"],
                     id=row["id"],

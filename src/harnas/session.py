@@ -131,6 +131,11 @@ class Session:
         observation = Observation()
         log = Log(observation=observation)
         for row in rows[1:]:
+            expected_seq = len(log._events)
+            if row["seq"] != expected_seq:
+                raise ValueError(
+                    f"invalid event seq at row {expected_seq}: got {row['seq']}, want {expected_seq}"
+                )
             log._events.append(Event(
                 seq=row["seq"],
                 id=row["id"],
