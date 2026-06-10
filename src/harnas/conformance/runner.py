@@ -686,7 +686,9 @@ def _conformance_hook_handlers():
 
     return {
         "conformance.audit_post_tool_use": audit_post_tool_use,
+        "conformance.audit_post_tool_use_variant": audit_post_tool_use,
         "conformance.raise_hook": raise_hook,
+        "conformance.raise_hook_variant": raise_hook,
     }
 
 
