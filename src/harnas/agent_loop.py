@@ -50,6 +50,7 @@ class AgentLoop:
         self._ingestor = ingestor
         self._stream_provider = stream_provider
         self._on_stream_event = on_stream_event
+        self._current_request: dict[str, Any] = {}
         self._runner = runner
         self._retry_policy = retry_policy or RetryPolicy()
         self._max_turns = max_turns
@@ -110,7 +111,11 @@ class AgentLoop:
         while True:
             try:
                 if self._stream_provider is not None:
-                    self._stream_provider(request, self._handle_stream_event)
+                    self._current_request = request
+                    try:
+                        self._stream_provider(request, self._handle_stream_event)
+                    finally:
+                        self._current_request = {}
                 else:
                     response = self._provider(request)
                     events = self._ingestor(response)
@@ -193,7 +198,7 @@ class AgentLoop:
             if self._on_stream_event is not None and event.type in STREAM_DELTA_TYPES:
                 self._on_stream_event(event)
         else:
-            self._stamp_assistant_identity(evt, {})
+            self._stamp_assistant_identity(evt, self._current_request)
             self._session.log.append(type=evt["type"], payload=evt["payload"])
 
     def _stamp_assistant_identity(self, evt: dict[str, Any], request: dict[str, Any]) -> None:
@@ -202,9 +207,7 @@ class AgentLoop:
         payload = evt.setdefault("payload", {})
         payload["usage"] = usage_helpers.normalize(payload.get("usage") or {})
         if not payload.get("provider"):
-            provider = self._provider_kind()
-            if provider != "unknown":
-                payload["provider"] = provider
+            payload["provider"] = self._provider_kind()
         if not payload.get("model") and request.get("model"):
             payload["model"] = request["model"]
 

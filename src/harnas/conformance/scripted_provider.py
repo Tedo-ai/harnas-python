@@ -38,7 +38,7 @@ class ScriptedProvider:
         if "expect_request" in response:
             expected = _normalize(response["expect_request"])
             actual = _normalize(request)
-            if actual != expected:
+            if not _request_value_equal(actual, expected):
                 raise RequestMismatch(
                     f"request does not match expected: {actual!r} != {expected!r}"
                 )
@@ -55,3 +55,19 @@ def _normalize(value: Any) -> Any:
     if isinstance(value, list):
         return [_normalize(v) for v in value]
     return value
+
+
+def _request_value_equal(actual: Any, expected: Any) -> bool:
+    if expected == "<generated>":
+        return actual is not None and actual != ""
+    if isinstance(actual, dict) and isinstance(expected, dict):
+        return set(actual) == set(expected) and all(
+            _request_value_equal(actual[key], value)
+            for key, value in expected.items()
+        )
+    if isinstance(actual, list) and isinstance(expected, list):
+        return len(actual) == len(expected) and all(
+            _request_value_equal(left, right)
+            for left, right in zip(actual, expected)
+        )
+    return actual == expected

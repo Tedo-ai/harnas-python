@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from .scripted_provider import ProviderHTTPError, RequestMismatch, _normalize
+from .scripted_provider import ProviderHTTPError, RequestMismatch, _normalize, _request_value_equal
 from harnas.providers.errors import ProviderError
 
 
@@ -29,7 +29,7 @@ class ScriptedStreamProvider:
         if isinstance(stream, dict) and "expect_request" in stream:
             expected = _normalize(stream["expect_request"])
             actual = _normalize(request)
-            if actual != expected:
+            if not _request_value_equal(actual, expected):
                 raise RequestMismatch(
                     f"request does not match expected: {actual!r} != {expected!r}"
                 )
