@@ -744,27 +744,7 @@ def _normalize_actual_for_expected(actual: Any, expected: Any) -> Any:
     actual = dict(actual)
     if "timestamp" not in expected:
         actual.pop("timestamp", None)
-    if isinstance(actual.get("payload"), dict) and isinstance(expected.get("payload"), dict):
-        actual["payload"] = _filter_payload_for_expected(actual["payload"], expected["payload"])
     return actual
-
-
-def _filter_payload_for_expected(actual: dict[str, Any], expected: dict[str, Any]) -> dict[str, Any]:
-    filtered = {key: value for key, value in actual.items() if key in expected}
-    if isinstance(expected.get("usage"), dict) and isinstance(actual.get("usage"), dict):
-        filtered["usage"] = _filter_map_for_expected(actual["usage"], expected["usage"])
-    return filtered
-
-
-def _filter_map_for_expected(actual: dict[str, Any], expected: dict[str, Any]) -> dict[str, Any]:
-    out: dict[str, Any] = {}
-    for key, expected_value in expected.items():
-        actual_value = actual.get(key)
-        if isinstance(expected_value, dict) and isinstance(actual_value, dict):
-            out[key] = _filter_map_for_expected(actual_value, expected_value)
-        else:
-            out[key] = actual_value
-    return out
 
 
 def _wildcard_value_match(actual: Any, expected: Any) -> bool:
