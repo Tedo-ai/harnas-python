@@ -22,7 +22,7 @@ jobs:
       - run: python -m pip install -e .[test] build
       - run: python -m py_compile $(find src -name '*.py') $(find tests -name '*.py')
       - run: test "$(shasum tests/testdata/mcp-content-samples.json | awk '{print $1}')" = "f0233845586eba3086e9233c146b76f950df244f"
-      - run: pytest
+      - run: HARNAS_SPEC="$GITHUB_WORKSPACE/harnas-spec" pytest
       - run: HARNAS_SPEC="$GITHUB_WORKSPACE/harnas-spec" python bin/conformance.py
       - run: python -m build
 
