@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from .scripted_provider import ProviderHTTPError
+from harnas.providers.errors import ProviderError
 
 
 class Exhausted(Exception):
@@ -36,4 +37,14 @@ class ScriptedStreamProvider:
                     },
                 })
                 raise ProviderHTTPError(error["status"], error["body"])
+            if "malformed_frame" in event:
+                error = event["malformed_frame"]
+                emit({
+                    "type": "assistant_turn_failed",
+                    "payload": {
+                        "turn_id": error["turn_id"],
+                        "error": error["message"],
+                    },
+                })
+                raise ProviderError(error["message"])
             emit(event)

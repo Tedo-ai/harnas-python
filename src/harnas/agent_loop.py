@@ -11,6 +11,7 @@ import time
 from typing import Any, Callable
 
 from .capabilities import CapabilityMismatchError
+from .providers.errors import ProviderError
 from .providers.retry_policy import RetryPolicy
 from .session import Session
 from .event import Event
@@ -137,6 +138,8 @@ class AgentLoop:
                 "status": getattr(error, "status", None),
                 "error_class": "Harnas::Providers::HTTPError"
                 if hasattr(error, "status")
+                else "Harnas::Providers::Error"
+                if isinstance(error, ProviderError)
                 else f"{type(error).__module__}.{type(error).__name__}",
                 "message": str(error),
                 "attempt": attempt,
