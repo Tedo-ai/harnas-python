@@ -253,6 +253,55 @@ def test_builtin_fetch_url():
     assert "hello" in result
 
 
+def test_builtin_fetch_url_strips_headers_on_cross_host_redirect():
+    seen_headers: dict[str, str | None] = {}
+
+    class Target(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen_headers["target_authorization"] = self.headers.get("Authorization")
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"redirected")
+
+        def log_message(self, *_args):
+            return
+
+    with socketserver.TCPServer(("127.0.0.1", 0), Target) as target:
+        target_thread = threading.Thread(target=target.serve_forever)
+        target_thread.daemon = True
+        target_thread.start()
+
+        class Redirector(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen_headers["redirector_authorization"] = self.headers.get("Authorization")
+                self.send_response(302)
+                self.send_header("Location", f"http://localhost:{target.server_address[1]}/")
+                self.end_headers()
+
+            def log_message(self, *_args):
+                return
+
+        with socketserver.TCPServer(("127.0.0.1", 0), Redirector) as redirector:
+            redirector_thread = threading.Thread(target=redirector.serve_forever)
+            redirector_thread.daemon = True
+            redirector_thread.start()
+            try:
+                result = builtin.fetch_url({
+                    "url": f"http://127.0.0.1:{redirector.server_address[1]}/",
+                    "headers": {"Authorization": "Bearer SECRET"},
+                })
+            finally:
+                redirector.shutdown()
+                redirector_thread.join()
+                target.shutdown()
+                target_thread.join()
+
+    assert "HTTP 200" in result
+    assert "redirected" in result
+    assert seen_headers["redirector_authorization"] == "Bearer SECRET"
+    assert seen_headers["target_authorization"] is None
+
+
 def test_builtin_load_skill_strips_frontmatter(tmp_path):
     (tmp_path / "git_workflow.md").write_text(
         "---\nname: git_workflow\ndescription: Git conventions\n---\nWrite crisp PR descriptions.\n",

@@ -7,6 +7,7 @@ from harnas.strategies.compaction.token_marker_tail import TokenMarkerTail
 from harnas.strategies.permission.always_allow import AlwaysAllow
 from harnas.strategies.permission.human_approval import HumanApproval
 from harnas.strategies.sandbox.network import Network
+from harnas.strategies.sandbox.write import Write
 
 
 def test_token_marker_tail_compacts_when_token_estimate_exceeds_threshold():
@@ -102,3 +103,37 @@ def test_network_sandbox_allows_and_denies_hosts():
     decisions = denied.hooks.invoke("pre_tool_use", session=denied, tool_use=tool_use)
     assert decisions[0]["allow"] is False
     assert "evil.example.com" in decisions[0]["reason"]
+
+
+def test_network_sandbox_refuses_malformed_urls():
+    session = Session.create()
+    Network.install(session, allow=["api.github.com"], deny=[])
+    tool_use = session.log.append(
+        "tool_use",
+        {"id": "t1", "name": "fetch_url", "arguments": {"url": "http://[::1"}},
+    )
+
+    decisions = session.hooks.invoke("pre_tool_use", session=session, tool_use=tool_use)
+
+    assert decisions[0]["allow"] is False
+    assert "unparseable URL" in decisions[0]["reason"]
+
+
+def test_write_sandbox_resolves_symlink_escape(tmp_path):
+    allowed = tmp_path / "allowed"
+    outside = tmp_path / "outside"
+    allowed.mkdir()
+    outside.mkdir()
+    link = allowed / "escape"
+    link.symlink_to(outside, target_is_directory=True)
+    session = Session.create()
+    Write.install(session, allow=[str(allowed)], deny=[])
+    tool_use = session.log.append(
+        "tool_use",
+        {"id": "t1", "name": "write_file", "arguments": {"path": str(link / "pwned.txt")}},
+    )
+
+    decisions = session.hooks.invoke("pre_tool_use", session=session, tool_use=tool_use)
+
+    assert decisions[0]["allow"] is False
+    assert "pwned.txt" in decisions[0]["reason"]
