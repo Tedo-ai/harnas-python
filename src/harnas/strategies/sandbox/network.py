@@ -34,7 +34,21 @@ class Network:
             return {"allow": True}
         host = self._host((tool_use.payload.get("arguments") or {}).get("url"))
         if host is None:
-            return {"allow": True}
+            self._consecutive_violations += 1
+            if self._consecutive_violations >= 3:
+                session.log.append(
+                    type="runtime_error",
+                    payload={
+                        "source": "strategy",
+                        "handler": "sandbox/network",
+                        "error_class": "Harnas::SandboxViolation",
+                        "message": "sandbox_network_violation_limit",
+                        "reason": "sandbox_network_violation_limit",
+                        "terminal": True,
+                    },
+                )
+                raise TurnFailed("sandbox_network_violation_limit")
+            return {"allow": False, "reason": "Network call has an unparseable URL and is not permitted."}
         if self._allowed(host) and host not in self._deny:
             self._consecutive_violations = 0
             return {"allow": True}

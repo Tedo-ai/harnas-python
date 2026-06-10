@@ -16,12 +16,15 @@ import urllib.request
 import uuid
 from pathlib import Path
 from typing import Any, Callable
+from urllib.error import HTTPError
+from urllib.parse import urljoin, urlparse
 
 from harnas import skills
 
 DEFAULT_SHELL_TIMEOUT_SECONDS = 30
 GREP_MAX_MATCHES = 200
 MAX_FETCH_BYTES = 256 * 1024
+MAX_FETCH_REDIRECTS = 5
 DEFAULT_BASH_SESSION_MAX_OUTPUT_BYTES = 64 * 1024
 ANSI_PATTERN = re.compile(r"\x1b\[[0-9;]*[mGKHF]|\r")
 ENV_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -356,11 +359,43 @@ def fetch_url(args: dict[str, Any]) -> str:
     url = _require(args, "url")
     if not (url.startswith("http://") or url.startswith("https://")):
         raise ValueError("only http(s) is supported")
-    request = urllib.request.Request(url, headers=_fetch_headers(args))
-    with urllib.request.urlopen(request, timeout=30) as response:
+    with _open_fetch_url(url, _fetch_headers(args)) as response:
         body = response.read(MAX_FETCH_BYTES).decode("utf-8", errors="replace")
         status = getattr(response, "status", response.getcode())
     return f"HTTP {status}\n{body}"
+
+
+def _open_fetch_url(url: str, headers: dict[str, str]):
+    opener = urllib.request.build_opener(_NoRedirectHandler)
+    current_url = url
+    current_headers = dict(headers)
+    for _redirect in range(MAX_FETCH_REDIRECTS + 1):
+        request = urllib.request.Request(current_url, headers=current_headers)
+        try:
+            return opener.open(request, timeout=30)
+        except HTTPError as error:
+            if error.code not in {301, 302, 303, 307, 308}:
+                raise
+            location = error.headers.get("Location")
+            if not location:
+                raise
+            next_url = urljoin(current_url, location)
+            if _url_host(next_url) != _url_host(current_url):
+                current_headers = {}
+            current_url = next_url
+    raise RuntimeError(f"too many redirects fetching {url}")
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001, ANN201
+        return None
+
+
+def _url_host(url: str) -> str | None:
+    try:
+        return urlparse(url).hostname
+    except ValueError:
+        return None
 
 
 def _fetch_headers(args: dict[str, Any]) -> dict[str, str]:
