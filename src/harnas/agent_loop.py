@@ -242,7 +242,7 @@ class AgentLoop:
                 )
             self._remember_new_tool_results()
 
-            tool_result = self._latest_tool_results.get(tu.payload["id"])
+            tool_result = self._latest_tool_results.get(str(self._payload_value(tu, "id")))
             self._session.hooks.invoke(
                 "post_tool_use",
                 session=self._session,
@@ -273,13 +273,16 @@ class AgentLoop:
         )
 
     def _pending_tool_uses(self) -> list:
-        pending = []
+        candidates = []
         for event in self._scan_new_events():
             if event.type == "tool_result":
                 self._remember_tool_result(event)
-            elif event.type == "tool_use" and event.payload["id"] not in self._fulfilled_tool_use_ids:
-                pending.append(event)
-        return pending
+            elif event.type == "tool_use":
+                candidates.append(event)
+        return [
+            event for event in candidates
+            if self._payload_value(event, "id") not in self._fulfilled_tool_use_ids
+        ]
 
     def _remember_new_tool_results(self) -> None:
         for event in self._scan_new_events():
@@ -294,11 +297,14 @@ class AgentLoop:
         return events
 
     def _remember_tool_result(self, event: Event) -> None:
-        tool_use_id = event.payload.get("tool_use_id")
+        tool_use_id = self._payload_value(event, "tool_use_id")
         if not tool_use_id:
             return
         self._fulfilled_tool_use_ids.add(str(tool_use_id))
         self._latest_tool_results[str(tool_use_id)] = event
+
+    def _payload_value(self, event: Event, key: str) -> Any:
+        return event.payload.get(key)
 
     def _terminal_runtime_error(self) -> bool:
         return any(
