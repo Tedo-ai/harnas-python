@@ -40,6 +40,10 @@ class Anthropic:
         self._capabilities = capabilities or {}
         self._capability_mismatch_behavior = capability_mismatch_behavior
 
+    @property
+    def provider_kind(self) -> str:
+        return self._provider_kind
+
     def __call__(self, log: Log) -> dict[str, Any]:
         effective = mutations.apply(log)
         messages = self._group_messages(effective)

@@ -64,6 +64,14 @@ def _powershell_quote(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def _cmd_env_quote(value: str) -> str:
+    escaped = value.replace("^", "^^")
+    for char in ('"', "&", "|", "<", ">", "(", ")"):
+        escaped = escaped.replace(char, "^" + char)
+    escaped = escaped.replace("%", "%%")
+    return escaped
+
+
 def handlers() -> dict[str, Callable[[dict[str, Any]], str]]:
     bash_sessions = BashSessionRegistry()
     return {
@@ -576,7 +584,7 @@ class BashSession:
             restores = [f"$env:{key}=$__harnas_old_{key}" for key in sorted(env)]
             return f"{'; '.join(assignments)}; try {{ {command} }} finally {{ {'; '.join(restores)} }}"
         if self.shell_type == "cmd":
-            assignments = [f'set "{key}={env[key]}"' for key in sorted(env)]
+            assignments = [f'set "{key}={_cmd_env_quote(env[key])}"' for key in sorted(env)]
             return " & ".join(["setlocal", *assignments, command, "endlocal"])
         assignments = [
             f"{key}={shlex.quote(env[key])}"

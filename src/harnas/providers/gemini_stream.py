@@ -10,6 +10,8 @@ from .streaming import GeminiStreamState, run_stream
 
 
 class GeminiStreamProvider:
+    kind = "gemini"
+
     def __init__(
         self,
         api_key: str,

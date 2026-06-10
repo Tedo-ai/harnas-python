@@ -10,6 +10,8 @@ OPENAI_ENDPOINT = "https://api.openai.com/v1/chat/completions"
 
 
 class OpenAIProvider:
+    kind = "openai"
+
     def __init__(
         self,
         api_key: str,

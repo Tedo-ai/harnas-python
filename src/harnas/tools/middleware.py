@@ -14,10 +14,34 @@ from ..log import Log
 ToolHandler = Callable[[dict[str, Any]], str]
 
 
-def timed(handler: ToolHandler, *, name: str | None = None) -> ToolHandler:
+def timed(
+    handler: ToolHandler,
+    *,
+    name: str | None = None,
+    on_timing: Callable[[dict[str, Any]], None] | None = None,
+) -> ToolHandler:
     def wrapped(args: dict[str, Any]) -> str:
-        _ = (name, time.monotonic())
-        return handler(args)
+        started = time.monotonic()
+        label = name or getattr(handler, "__name__", handler.__class__.__name__)
+        try:
+            result = handler(args)
+        except Exception as error:
+            if on_timing is not None:
+                on_timing({
+                    "name": label,
+                    "duration_ms": (time.monotonic() - started) * 1000,
+                    "outcome": "error",
+                    "error_class": type(error).__name__,
+                })
+            raise
+        if on_timing is not None:
+            on_timing({
+                "name": label,
+                "duration_ms": (time.monotonic() - started) * 1000,
+                "outcome": "ok",
+                "error_class": None,
+            })
+        return result
 
     return wrapped
 

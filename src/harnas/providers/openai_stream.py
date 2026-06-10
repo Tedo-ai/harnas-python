@@ -9,6 +9,8 @@ from .streaming import OpenAIStreamState, run_stream
 
 
 class OpenAIStreamProvider:
+    kind = "openai"
+
     def __init__(
         self,
         api_key: str,

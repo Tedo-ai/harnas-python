@@ -11,6 +11,8 @@ ANTHROPIC_API_VERSION = "2023-06-01"
 
 
 class AnthropicProvider:
+    kind = "anthropic"
+
     def __init__(
         self,
         api_key: str,

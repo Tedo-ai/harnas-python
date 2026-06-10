@@ -11,6 +11,8 @@ GEMINI_ENDPOINT_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
 class GeminiProvider:
+    kind = "gemini"
+
     def __init__(
         self,
         api_key: str,

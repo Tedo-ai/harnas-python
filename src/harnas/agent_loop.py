@@ -54,6 +54,9 @@ class AgentLoop:
         self._runner = runner
         self._retry_policy = retry_policy or RetryPolicy()
         self._max_turns = max_turns
+        self._event_scan_index = 0
+        self._fulfilled_tool_use_ids: set[str] = set()
+        self._latest_tool_results: dict[str, Event] = {}
 
     def run(self) -> str:
         reason = "max_turns_reached"
@@ -154,24 +157,14 @@ class AgentLoop:
 
     def _provider_kind(self) -> str:
         live = self._stream_provider or self._provider
-        class_name = live.__class__.__name__ if live is not None else ""
-        if "Anthropic" in class_name:
-            return "anthropic"
-        if "OpenAI" in class_name:
-            return "openai"
-        if "Gemini" in class_name:
-            return "gemini"
-        return "unknown"
+        return self._explicit_kind(live)
 
     def _projection_kind(self) -> str:
-        class_name = self._projection.__class__.__name__
-        if "Anthropic" in class_name:
-            return "anthropic"
-        if "OpenAI" in class_name:
-            return "openai"
-        if "Gemini" in class_name:
-            return "gemini"
-        return "unknown"
+        return self._explicit_kind(self._projection)
+
+    def _explicit_kind(self, value: Any) -> str:
+        kind = getattr(value, "provider_kind", None) or getattr(value, "kind", None)
+        return str(kind) if kind else "unknown"
 
     def _append_runtime_error(self, reason: str, message: str) -> None:
         self._session.log.append(
@@ -247,15 +240,9 @@ class AgentLoop:
                     into_log=self._session.log,
                     session=self._session,
                 )
+            self._remember_new_tool_results()
 
-            tool_result = next(
-                (
-                    e for e in self._session.log.reverse_each()
-                    if e.type == "tool_result"
-                    and e.payload.get("tool_use_id") == tu.payload["id"]
-                ),
-                None,
-            )
+            tool_result = self._latest_tool_results.get(tu.payload["id"])
             self._session.hooks.invoke(
                 "post_tool_use",
                 session=self._session,
@@ -286,15 +273,32 @@ class AgentLoop:
         )
 
     def _pending_tool_uses(self) -> list:
-        fulfilled = {
-            e.payload["tool_use_id"]
-            for e in self._session.log
-            if e.type == "tool_result"
-        }
-        return [
-            e for e in self._session.log
-            if e.type == "tool_use" and e.payload["id"] not in fulfilled
-        ]
+        pending = []
+        for event in self._scan_new_events():
+            if event.type == "tool_result":
+                self._remember_tool_result(event)
+            elif event.type == "tool_use" and event.payload["id"] not in self._fulfilled_tool_use_ids:
+                pending.append(event)
+        return pending
+
+    def _remember_new_tool_results(self) -> None:
+        for event in self._scan_new_events():
+            if event.type == "tool_result":
+                self._remember_tool_result(event)
+
+    def _scan_new_events(self) -> list[Event]:
+        events = []
+        while self._event_scan_index < len(self._session.log):
+            events.append(self._session.log[self._event_scan_index])
+            self._event_scan_index += 1
+        return events
+
+    def _remember_tool_result(self, event: Event) -> None:
+        tool_use_id = event.payload.get("tool_use_id")
+        if not tool_use_id:
+            return
+        self._fulfilled_tool_use_ids.add(str(tool_use_id))
+        self._latest_tool_results[str(tool_use_id)] = event
 
     def _terminal_runtime_error(self) -> bool:
         return any(

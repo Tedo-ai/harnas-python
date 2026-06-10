@@ -9,6 +9,8 @@ from .streaming import AnthropicStreamState, run_stream
 
 
 class AnthropicStreamProvider:
+    kind = "anthropic"
+
     def __init__(
         self,
         api_key: str,
