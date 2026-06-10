@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from .scripted_provider import ProviderHTTPError
+from .scripted_provider import ProviderHTTPError, RequestMismatch, _normalize
 from harnas.providers.errors import ProviderError
 
 
@@ -19,13 +19,21 @@ class ScriptedStreamProvider:
 
     def __call__(
         self,
-        _request: dict[str, Any],
+        request: dict[str, Any],
         emit: Callable[[dict[str, Any]], None],
     ) -> None:
         if not self._streams:
             raise Exhausted("no more scripted streams")
         self.call_count += 1
         stream = self._streams.pop(0)
+        if isinstance(stream, dict) and "expect_request" in stream:
+            expected = _normalize(stream["expect_request"])
+            actual = _normalize(request)
+            if actual != expected:
+                raise RequestMismatch(
+                    f"request does not match expected: {actual!r} != {expected!r}"
+                )
+            stream = stream["response"]
         for event in stream:
             if "error" in event:
                 error = event["error"]
