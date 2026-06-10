@@ -102,3 +102,21 @@ def test_stale_read_guard_refuses_existing_write_without_read(tmp_path):
 
 def test_timed_is_transparent():
     assert timed(lambda args: args["value"])({"value": "ok"}) == "ok"
+
+
+def test_timed_reports_success_and_failure():
+    events = []
+    timed(lambda _args: "ok", name="ok", on_timing=events.append)({})
+
+    def boom(_args):
+        raise RuntimeError("broken")
+
+    with pytest.raises(RuntimeError):
+        timed(boom, name="boom", on_timing=events.append)({})
+
+    assert events[0]["name"] == "ok"
+    assert events[0]["outcome"] == "ok"
+    assert events[0]["duration_ms"] >= 0
+    assert events[1]["name"] == "boom"
+    assert events[1]["outcome"] == "error"
+    assert events[1]["error_class"] == "RuntimeError"

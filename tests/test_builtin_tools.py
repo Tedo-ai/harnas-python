@@ -170,6 +170,18 @@ def test_builtin_bash_session_per_command_env_does_not_persist(tmp_path):
         registry.close()
 
 
+def test_bash_session_cmd_env_escapes_shell_metacharacters():
+    session = object.__new__(builtin.BashSession)
+    session.shell_type = "cmd"
+    session.shell = "cmd.exe"
+
+    command = session._command_with_env("echo %MYVAR%", {"MYVAR": 'hello" & echo PWNED'})
+
+    assert 'hello" & echo PWNED' not in command
+    assert '^&' in command
+    assert '^"' in command
+
+
 def test_builtin_bash_session_timeout_status_and_kill(tmp_path):
     registry = builtin.BashSessionRegistry()
     try:

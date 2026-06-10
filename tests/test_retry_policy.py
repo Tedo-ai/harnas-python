@@ -5,6 +5,8 @@ from harnas.session import Session
 
 
 class AnthropicFlakyProvider:
+    kind = "anthropic"
+
     def __init__(self):
         self.calls = 0
 
@@ -20,6 +22,13 @@ class AnthropicFlakyProvider:
 
 
 class FatalProvider:
+    def __call__(self, _request):
+        raise HTTPError(400, {"error": "bad"})
+
+
+class AnthropicNamedOpenAIProvider:
+    kind = "openai"
+
     def __call__(self, _request):
         raise HTTPError(400, {"error": "bad"})
 
@@ -72,6 +81,21 @@ def test_retry_policy_aborts_permanent_http():
     assert session.log[0].type == "provider_error"
     assert session.log[0].payload["terminal"] is True
     assert session.log[0].payload["status"] == 400
+
+
+def test_provider_error_uses_explicit_provider_kind_not_class_name():
+    session = Session.create()
+
+    AgentLoop(
+        session=session,
+        projection=projection,
+        provider=AnthropicNamedOpenAIProvider(),
+        ingestor=ingestor,
+        retry_policy=RetryPolicy(backoff_ms=lambda _attempt: 0),
+    ).run()
+
+    assert session.log[0].type == "provider_error"
+    assert session.log[0].payload["provider"] == "openai"
 
 
 def test_retry_policy_classifies_network_style_errors():
