@@ -56,6 +56,7 @@ class Runtime:
             provider=self.loaded.provider,
             ingestor=self.loaded.ingestor,
             runner=self.loaded.runner(),
+            provider_kind=self.loaded.provider_kind,
             max_turns=max_turns,
         )
 
@@ -69,6 +70,7 @@ class Runtime:
             stream_provider=self.loaded.stream_provider,
             runner=self.loaded.runner() if self.loaded.registry.size > 0 else None,
             max_turns=max_turns,
+            provider_kind=self.loaded.provider_kind,
         )
 
     def save(self, path: str) -> Session:

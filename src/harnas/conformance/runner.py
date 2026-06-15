@@ -371,6 +371,7 @@ def run_session(
             stream_provider=provider if streaming else None,
             runner=runner,
             max_turns=3,
+            provider_kind=manifest["provider"]["kind"],
         ).run()
         if runner is not None and runner.child_sessions:
             session.metadata["spawn_child_sessions"] = runner.child_sessions

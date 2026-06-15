@@ -59,6 +59,7 @@ class Loaded:
     strategies: list["StrategyInstallation"]
     hooks: list["HookInstallation"]
     stream_provider: Callable[..., Any] | None = None
+    provider_kind: str | None = None
 
     def install_strategies(self) -> list[Any]:
         installed = [strategy.install(self.session) for strategy in self.strategies]
@@ -175,6 +176,7 @@ def load(
         registry=registry,
         strategies=strategies,
         hooks=hooks,
+        provider_kind=manifest["provider"]["kind"],
     )
 
 

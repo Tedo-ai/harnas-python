@@ -30,6 +30,7 @@ class Agent:
         stream_provider: Callable[[dict[str, Any], Callable[[dict[str, Any]], None]], None] | None = None,
         runner: Any | None = None,
         max_turns: int = DEFAULT_MAX_TURNS,
+        provider_kind: str | None = None,
     ) -> None:
         self.name = name
         self.session = session
@@ -39,6 +40,7 @@ class Agent:
         self.stream_provider = stream_provider
         self.runner = runner
         self.max_turns = max_turns
+        self.provider_kind = provider_kind
 
     @classmethod
     def from_manifest(
@@ -69,6 +71,7 @@ class Agent:
             stream_provider=loaded.stream_provider,
             runner=loaded.runner() if loaded.registry.size > 0 else None,
             max_turns=DEFAULT_MAX_TURNS,
+            provider_kind=loaded.provider_kind,
         )
 
     def chat(self, text: str) -> Response:
@@ -82,6 +85,7 @@ class Agent:
             provider=self.provider,
             ingestor=self.ingestor,
             runner=self.runner,
+            provider_kind=self.provider_kind,
             max_turns=self.max_turns,
         ).run()
         return self._build_response()
@@ -107,6 +111,7 @@ class Agent:
             runner=self.runner,
             max_turns=self.max_turns,
             on_stream_event=on_delta,
+            provider_kind=self.provider_kind,
         ).run()
         return self._build_response()
 

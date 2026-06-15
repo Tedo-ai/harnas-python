@@ -43,6 +43,7 @@ class AgentLoop:
         runner: Any | None = None,
         retry_policy: RetryPolicy | None = None,
         max_turns: int = DEFAULT_MAX_TURNS,
+        provider_kind: str | None = None,
     ) -> None:
         self._session = session
         self._projection = projection
@@ -54,6 +55,7 @@ class AgentLoop:
         self._runner = runner
         self._retry_policy = retry_policy or RetryPolicy()
         self._max_turns = max_turns
+        self._manifest_provider_kind = provider_kind
         self._event_scan_index = 0
         self._fulfilled_tool_use_ids: set[str] = set()
         self._latest_tool_results: dict[str, Event] = {}
@@ -156,6 +158,8 @@ class AgentLoop:
         )
 
     def _provider_kind(self) -> str:
+        if self._manifest_provider_kind:
+            return self._manifest_provider_kind
         live = self._stream_provider or self._provider
         return self._explicit_kind(live)
 
@@ -199,8 +203,7 @@ class AgentLoop:
             return
         payload = evt.setdefault("payload", {})
         payload["usage"] = usage_helpers.normalize(payload.get("usage") or {})
-        if not payload.get("provider"):
-            payload["provider"] = self._provider_kind()
+        payload["provider"] = self._provider_kind()
         if not payload.get("model") and request.get("model"):
             payload["model"] = request["model"]
 
