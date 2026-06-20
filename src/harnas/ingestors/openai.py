@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from .. import provider_carriers
 from .. import usage as usage_helpers
 
 FINISH_REASON_MAP = {
@@ -42,6 +43,33 @@ class OpenAI:
         reasoning = self._reasoning_blocks(message)
         if reasoning:
             payload["reasoning"] = reasoning
+        if self._carrier_data(message):
+            if payload["text"]:
+                payload["content"] = [{
+                    "type": "text",
+                    "text": payload["text"],
+                    "provider_parts": [
+                        provider_carriers.carrier(
+                            destination="openai.chat_completions",
+                            index=0,
+                            kind="openai.message_content",
+                            wire={"content": payload["text"]},
+                            canonical_refs=["payload.content[0]"],
+                        )
+                    ],
+                }]
+            payload["provider_items"] = [
+                provider_carriers.carrier(
+                    destination="openai.chat_completions",
+                    index=0,
+                    kind="openai.chat_message",
+                    wire=message,
+                    canonical_refs=[
+                        *(["payload.content[0]"] if payload["text"] else []),
+                        "payload.reasoning[0]",
+                    ],
+                )
+            ]
 
         events: list[dict[str, Any]] = [{"type": "assistant_message", "payload": payload}]
         for call in message.get("tool_calls") or []:
@@ -81,5 +109,25 @@ class OpenAI:
                 continue
             text = detail.get("text") or detail.get("reasoning") or detail.get("content")
             if isinstance(text, str) and text:
-                blocks.append({"type": "text", "text": text})
+                out: dict[str, Any] = {"type": "text", "text": text}
+                if self._reasoning_detail_carrier_data(detail):
+                    out["provider_parts"] = [
+                        provider_carriers.carrier(
+                            destination="openai.chat_completions",
+                            index=len(blocks),
+                            kind="openai.reasoning_detail",
+                            wire=detail,
+                            canonical_refs=[f"payload.reasoning[{len(blocks)}]"],
+                        )
+                    ]
+                blocks.append(out)
         return blocks
+
+    def _carrier_data(self, message: dict[str, Any]) -> bool:
+        return any(
+            isinstance(detail, dict) and self._reasoning_detail_carrier_data(detail)
+            for detail in message.get("reasoning_details") or []
+        )
+
+    def _reasoning_detail_carrier_data(self, detail: dict[str, Any]) -> bool:
+        return any(key not in {"type", "text", "reasoning", "content"} for key in detail)

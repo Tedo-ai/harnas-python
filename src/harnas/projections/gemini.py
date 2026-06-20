@@ -14,6 +14,7 @@ from typing import Any
 from .. import mutations
 from .. import content_blocks
 from .. import capabilities as provider_capabilities
+from .. import provider_carriers
 from ..attachments import AttachmentStore
 from ..log import Log
 
@@ -114,6 +115,10 @@ class Gemini:
         for block in content_blocks.from_payload(payload):
             match block.get("type"):
                 case "text":
+                    wire = provider_carriers.part_wire(block, "gemini.generateContent")
+                    if wire is not None:
+                        parts.append(wire)
+                        continue
                     text = str(block.get("text", ""))
                     if text:
                         parts.append({"text": text})

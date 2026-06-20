@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .. import provider_carriers
 from .. import usage as usage_helpers
 
 FINISH_REASON_MAP = {
@@ -53,6 +54,8 @@ class Gemini:
         text = "".join(p.get("text", "") for p in parts if "text" in p)
         payload: dict[str, Any] = {"text": text, "stop_reason": stop, "usage": usage}
         payload["provider"] = "gemini"
+        if self._carrier_data(parts):
+            payload["content"] = self._content_blocks_with_carriers(parts)
         reasoning = self._reasoning_blocks(parts)
         if reasoning:
             payload["reasoning"] = reasoning
@@ -68,6 +71,34 @@ class Gemini:
             if isinstance(thought, str) and thought:
                 blocks.append({"type": "text", "text": thought})
         return blocks
+
+    def _carrier_data(self, parts: list[dict[str, Any]]) -> bool:
+        return any(
+            "text" in part and (part.get("thoughtSignature") or self._extra_text_part_fields(part))
+            for part in parts
+        )
+
+    def _content_blocks_with_carriers(self, parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        blocks: list[dict[str, Any]] = []
+        for part in parts:
+            if "text" not in part:
+                continue
+            block: dict[str, Any] = {"type": "text", "text": str(part.get("text", ""))}
+            if part.get("thoughtSignature") or self._extra_text_part_fields(part):
+                block["provider_parts"] = [
+                    provider_carriers.carrier(
+                        destination="gemini.generateContent",
+                        index=0,
+                        kind="gemini.part",
+                        wire=part,
+                        canonical_refs=[f"payload.content[{len(blocks)}]"],
+                    )
+                ]
+            blocks.append(block)
+        return blocks
+
+    def _extra_text_part_fields(self, part: dict[str, Any]) -> bool:
+        return any(key not in {"text"} for key in part)
 
     def _tool_use_event(self, call: dict[str, Any]) -> dict[str, Any]:
         name = str(call.get("name", ""))

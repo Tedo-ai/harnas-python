@@ -13,6 +13,7 @@ from typing import Any
 from .. import mutations
 from .. import content_blocks
 from .. import capabilities as provider_capabilities
+from .. import provider_carriers
 from ..attachments import AttachmentStore
 from ..log import Log
 
@@ -62,7 +63,11 @@ class OpenAI:
             case "user_message" | "summary":
                 messages.append({"role": "user", "content": self._content(evt.payload)})
             case "assistant_message":
-                messages.append({"role": "assistant", "content": self._content(evt.payload)})
+                wire = provider_carriers.wire(evt.payload.get("provider_items"), "openai.chat_completions")
+                if isinstance(wire, dict):
+                    messages.append(wire)
+                else:
+                    messages.append({"role": "assistant", "content": self._content(evt.payload)})
             case "tool_use":
                 self._merge_tool_use(messages, evt)
             case "tool_result":
@@ -103,6 +108,10 @@ class OpenAI:
         for block in blocks:
             match block.get("type"):
                 case "text":
+                    wire = provider_carriers.part_wire(block, "openai.chat_completions")
+                    if wire is not None:
+                        rendered.append(wire)
+                        continue
                     rendered.append({"type": "text", "text": str(block.get("text", ""))})
                 case "image":
                     fallback = self._fallback_if_unsupported(block)

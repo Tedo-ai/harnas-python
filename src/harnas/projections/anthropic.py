@@ -13,6 +13,7 @@ from typing import Any
 from .. import mutations
 from .. import content_blocks
 from .. import capabilities as provider_capabilities
+from .. import provider_carriers
 from ..attachments import AttachmentStore
 from ..log import Log
 
@@ -88,6 +89,9 @@ class Anthropic:
             case "user_message" | "summary":
                 return ("user", self._content_blocks(evt.payload))
             case "assistant_message":
+                wire = provider_carriers.wires(evt.payload.get("provider_items"), "anthropic.messages")
+                if wire is not None:
+                    return ("assistant", wire)
                 blocks = self._reasoning_blocks(evt)
                 blocks.extend(
                     block for block in self._content_blocks(evt.payload)
@@ -122,6 +126,10 @@ class Anthropic:
         for block in evt.payload.get("reasoning") or []:
             if block.get("type") != "text":
                 continue
+            wire = provider_carriers.part_wire(block, "anthropic.messages")
+            if wire is not None:
+                blocks.append(wire)
+                continue
             out = {"type": "thinking", "thinking": block.get("text", "")}
             if block.get("signature"):
                 out["signature"] = block["signature"]
@@ -133,6 +141,10 @@ class Anthropic:
         for block in content_blocks.from_payload(payload):
             match block.get("type"):
                 case "text":
+                    wire = provider_carriers.part_wire(block, "anthropic.messages")
+                    if wire is not None:
+                        rendered.append(wire)
+                        continue
                     rendered.append({"type": "text", "text": str(block.get("text", ""))})
                 case "image":
                     fallback = self._fallback_if_unsupported(block)

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .. import provider_carriers
 from .. import usage as usage_helpers
 
 STOP_REASON_MAP = {
@@ -27,7 +28,7 @@ class Anthropic:
         stop = STOP_REASON_MAP.get(response.get("stop_reason"), "other")
         usage = self._normalize_usage(response.get("usage") or {})
 
-        events: list[dict[str, Any]] = [self._assistant_event(content, stop, usage)]
+        events: list[dict[str, Any]] = [self._assistant_event(content, stop, usage, response)]
         for block in content:
             if block.get("type") == "tool_use":
                 events.append(self._tool_use_event(block))
@@ -36,7 +37,9 @@ class Anthropic:
     def _normalize_usage(self, wire_usage: dict[str, Any]) -> dict[str, int]:
         return usage_helpers.normalize(wire_usage)
 
-    def _assistant_event(self, content: list[dict[str, Any]], stop: str, usage: dict[str, int]) -> dict[str, Any]:
+    def _assistant_event(
+        self, content: list[dict[str, Any]], stop: str, usage: dict[str, int], response: dict[str, Any]
+    ) -> dict[str, Any]:
         text = "".join(b.get("text", "") for b in content if b.get("type") == "text")
         payload: dict[str, Any] = {
             "text": text,
@@ -44,9 +47,40 @@ class Anthropic:
             "usage": usage,
             "provider": "anthropic",
         }
+        if response.get("model"):
+            payload["model"] = str(response["model"])
         reasoning = self._reasoning_blocks(content)
         if reasoning:
             payload["reasoning"] = reasoning
+        if self._carrier_data(content):
+            if text:
+                payload["content"] = [{
+                    "type": "text",
+                    "text": text,
+                    "provider_parts": [
+                        provider_carriers.carrier(
+                            destination="anthropic.messages",
+                            index=0,
+                            kind="anthropic.content_block",
+                            wire={"type": "text", "text": text},
+                            canonical_refs=["payload.content[0]"],
+                        )
+                    ],
+                }]
+            carrier_content = [block for block in content if block.get("type") != "tool_use"]
+            refs = ["payload.reasoning[0]"]
+            if text:
+                refs.append("payload.content[0]")
+            if carrier_content:
+                payload["provider_items"] = [
+                    provider_carriers.carrier(
+                        destination="anthropic.messages",
+                        index=0,
+                        kind="anthropic.content",
+                        wire=carrier_content,
+                        canonical_refs=refs,
+                    )
+                ]
         return {
             "type": "assistant_message",
             "payload": payload,
@@ -60,8 +94,20 @@ class Anthropic:
             out = {"type": "text", "text": str(block.get("thinking") or "")}
             if block.get("signature"):
                 out["signature"] = str(block["signature"])
+                out["provider_parts"] = [
+                    provider_carriers.carrier(
+                        destination="anthropic.messages",
+                        index=0,
+                        kind="anthropic.content_block",
+                        wire=block,
+                        canonical_refs=["payload.reasoning[0]"],
+                    )
+                ]
             blocks.append(out)
         return blocks
+
+    def _carrier_data(self, content: list[dict[str, Any]]) -> bool:
+        return any(block.get("type") == "thinking" and block.get("signature") for block in content)
 
     def _tool_use_event(self, block: dict[str, Any]) -> dict[str, Any]:
         return {
