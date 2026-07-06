@@ -1,6 +1,6 @@
 """Harnas — Python implementation of the LLM agent harness specification."""
 
-__version__ = "0.20.1"
+__version__ = "0.21.0"
 
 from .jcs import canonicalize, canonicalize_json, content_hash_json
 from .storage import (
