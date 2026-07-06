@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..agent_loop import AgentLoop
+from .. import approval
 from ..attachments import MemoryStore
 from ..manifest import _effective_tool_config
 from ..session import Session
@@ -32,6 +33,10 @@ STRATEGY_CLASSES = {
     "Compaction::MarkerTail": ("..strategies.compaction.marker_tail", "MarkerTail"),
     "Compaction::ToolOutputCap": ("..strategies.compaction.tool_output_cap", "ToolOutputCap"),
     "Permission::DenyByName": ("..strategies.permission.deny_by_name", "DenyByName"),
+    "Permission::RequireApproval": (
+        "..strategies.permission.require_approval",
+        "RequireApproval",
+    ),
     "sandbox/write": ("..strategies.sandbox.write", "Write"),
     "sandbox/network": ("..strategies.sandbox.network", "Network"),
     "credential/proxy": ("..strategies.credential.proxy", "Proxy"),
@@ -358,7 +363,24 @@ def run_session(
                 session.log.append(type=event["type"], payload=_normalize(event["payload"]))
             continue
 
-        if isinstance(input_item, dict) and "content" in input_item:
+        if isinstance(input_item, dict) and "approve" in input_item:
+            spec = input_item["approve"]
+            approval.approve(
+                session=session,
+                runner=runner,
+                tool_use_id=spec["tool_use_id"],
+                resolved_by=spec.get("resolved_by"),
+                reason=spec.get("reason"),
+            )
+        elif isinstance(input_item, dict) and "deny" in input_item:
+            spec = input_item["deny"]
+            approval.deny(
+                session=session,
+                tool_use_id=spec["tool_use_id"],
+                reason=spec["reason"],
+                resolved_by=spec.get("resolved_by"),
+            )
+        elif isinstance(input_item, dict) and "content" in input_item:
             session.log.append(type="user_message", payload={"content": input_item["content"]})
         else:
             text = input_item["user"] if isinstance(input_item, dict) else input_item
