@@ -484,6 +484,10 @@ STRATEGY_CLASSES = {
     "Compaction::TokenMarkerTail": ("harnas.strategies.compaction.token_marker_tail", "TokenMarkerTail"),
     "Compaction::SummaryTail": ("harnas.strategies.compaction.summary_tail", "SummaryTail"),
     "Permission::DenyByName": ("harnas.strategies.permission.deny_by_name", "DenyByName"),
+    "Permission::RequireApproval": (
+        "harnas.strategies.permission.require_approval",
+        "RequireApproval",
+    ),
     "Permission::AlwaysAllow": ("harnas.strategies.permission.always_allow", "AlwaysAllow"),
     "Permission::HumanApproval": ("harnas.strategies.permission.human_approval", "HumanApproval"),
     "sandbox/write": ("harnas.strategies.sandbox.write", "Write"),

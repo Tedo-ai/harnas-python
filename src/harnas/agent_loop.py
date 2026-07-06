@@ -79,9 +79,12 @@ class AgentLoop:
                 break
 
             try:
-                dispatched = self._dispatch_pending_tools()
+                dispatched, awaiting = self._dispatch_pending_tools()
             except TurnFailed:
                 reason = "runtime_failed"
+                break
+            if awaiting:
+                reason = "awaiting_approval"
                 break
             if self._terminal_runtime_error():
                 reason = "runtime_failed"
@@ -207,14 +210,32 @@ class AgentLoop:
         if not payload.get("model") and request.get("model"):
             payload["model"] = request["model"]
 
-    def _dispatch_pending_tools(self) -> list:
+    def _dispatch_pending_tools(self) -> tuple[list, bool]:
+        """Two-pass dispatch (spec 07-permission R7-R8): first compose every
+        pending tool_use's pre_tool_use decision; any pending_approval verdict
+        (on a tool_use not already refused) pauses the batch atomically — no
+        tool_use executes, only approval_requested Events are appended, and
+        the run ends with the awaiting_approval outcome."""
         if self._runner is None:
-            return []
+            return [], False
         pending = self._pending_tool_uses()
-        for tu in pending:
-            decisions = self._session.hooks.invoke(
-                "pre_tool_use", session=self._session, tool_use=tu
-            )
+        decisions_list = [
+            self._session.hooks.invoke("pre_tool_use", session=self._session, tool_use=tu)
+            for tu in pending
+        ]
+        requests = self._approval_requests(pending, decisions_list)
+        if requests:
+            for tool_use, decision in requests:
+                self._session.log.append(
+                    type="approval_requested",
+                    payload={
+                        "tool_use_id": self._payload_value(tool_use, "id"),
+                        "reason": decision.get("reason"),
+                        "requested_by": decision.get("requested_by"),
+                    },
+                )
+            return pending, True
+        for tu, decisions in zip(pending, decisions_list):
             denied = next(
                 (
                     d for d in decisions
@@ -253,7 +274,24 @@ class AgentLoop:
                 tool_result=tool_result,
                 denied=denied is not None,
             )
-        return pending
+        return pending, False
+
+    @staticmethod
+    def _approval_requests(pending: list, decisions_list: list) -> list:
+        requests = []
+        for tool_use, decisions in zip(pending, decisions_list):
+            if any(isinstance(d, dict) and d.get("allow") is False for d in decisions):
+                continue
+            decision = next(
+                (
+                    d for d in decisions
+                    if isinstance(d, dict) and d.get("pending_approval") is True
+                ),
+                None,
+            )
+            if decision is not None:
+                requests.append((tool_use, decision))
+        return requests
 
     def _tool_use_with_argument_overrides(self, tool_use_event, decisions: list) -> Event:
         override = next(
