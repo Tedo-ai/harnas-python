@@ -7,7 +7,7 @@ fixtures against the
 in the 3x3 Session JSONL round-trip matrix, and ships live providers,
 tools, strategies, middleware, and a manifest-driven CLI.
 
-**Version 0.21.0** (in development). Tracks Harnas spec 0.21.0.
+**Version 0.22.0** (in development). Tracks Harnas spec 0.22.0.
 
 Raw provider-wire conformance: 18/18 cases and 39/39 deterministic
 byte-fragmented executions through the production Anthropic, OpenAI, and
