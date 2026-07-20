@@ -18,6 +18,7 @@ class FakeResponse:
             self._body = body.encode("utf-8")
         else:
             self._body = json.dumps(body).encode("utf-8")
+        self._offset = 0
 
     def __enter__(self):
         return self
@@ -25,8 +26,14 @@ class FakeResponse:
     def __exit__(self, *_args):
         return None
 
-    def read(self):
-        return self._body
+    def read(self, size=-1):
+        if size is None or size < 0:
+            size = len(self._body) - self._offset
+        start = self._offset
+        self._offset = min(len(self._body), self._offset + size)
+        return self._body[start:self._offset]
+
+    read1 = read
 
     def getcode(self):
         return self.status
@@ -109,10 +116,13 @@ def test_invalid_json_response_raises_provider_error():
 
 def test_anthropic_stream_accepts_crlf_sse_and_emits_canonical_events():
     stream = "\r\n\r\n".join([
-        'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hel"}}',
-        'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"lo"}}',
+        'data: {"type":"message_start","message":{"usage":{"input_tokens":1,"output_tokens":0}}}',
+        'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+        'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hel"}}',
+        'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"lo"}}',
+        'data: {"type":"content_block_stop","index":0}',
         'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":1,"output_tokens":2}}',
-        "data: [DONE]",
+        'data: {"type":"message_stop"}',
         "",
     ])
 
@@ -134,5 +144,14 @@ def test_anthropic_stream_accepts_crlf_sse_and_emits_canonical_events():
     assert events[-1]["payload"] == {
         "text": "hello",
         "stop_reason": "end_turn",
-        "usage": {"input_tokens": 1, "output_tokens": 2},
+        "usage": {
+            "input_tokens": 1,
+            "output_tokens": 2,
+            "total_tokens": 3,
+            "cache_read_input_tokens": None,
+            "cache_write_input_tokens": None,
+            "reasoning_tokens": None,
+            "provider_raw": {"input_tokens": 1, "output_tokens": 2},
+            "provenance": "provider_reported",
+        },
     }

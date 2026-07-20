@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import codecs
+import re
 import urllib.error
 import urllib.request
 from typing import Any, Callable, Iterable
@@ -66,26 +68,46 @@ def stream_sse(
 
 
 def _read_sse_lines(response: Any, on_data: Callable[[str], None]) -> None:
-    block: list[str] = []
-    for raw_line in response:
-        line = raw_line.decode("utf-8").rstrip("\r\n")
-        if line == "":
-            _dispatch_block(block, on_data)
-            block = []
-            continue
-        block.append(line)
-    if block:
-        _dispatch_block(block, on_data)
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
+    buffer = ""
+    read_chunk = getattr(response, "read1", None)
+    if not callable(read_chunk):
+        read_chunk = response.read
+    while True:
+        raw = read_chunk(8192)
+        if not raw:
+            break
+        try:
+            buffer += decoder.decode(raw, final=False)
+        except UnicodeDecodeError as error:
+            raise ProviderError(f"invalid UTF-8 provider stream: {error}") from error
+        while True:
+            match = re.search(r"\r?\n\r?\n", buffer)
+            if match is None:
+                break
+            _dispatch_block(buffer[:match.start()].splitlines(), on_data)
+            buffer = buffer[match.end():]
+    try:
+        buffer += decoder.decode(b"", final=True)
+    except UnicodeDecodeError as error:
+        raise ProviderError(f"invalid UTF-8 provider stream: {error}") from error
+    if buffer:
+        _dispatch_block(buffer.splitlines(), on_data)
 
 
 def _dispatch_block(lines: Iterable[str], on_data: Callable[[str], None]) -> None:
+    data_lines: list[str] = []
     for line in lines:
         if not line.startswith("data:"):
             continue
-        data = line.removeprefix("data:").strip()
-        if data and data != "[DONE]":
+        data = line.removeprefix("data:")
+        if data.startswith(" "):
+            data = data[1:]
+        data_lines.append(data)
+    if data_lines:
+        data = "\n".join(data_lines)
+        if data:
             on_data(data)
-        return
 
 
 def _parse_json(raw: bytes) -> dict[str, Any]:
