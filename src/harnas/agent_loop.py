@@ -70,8 +70,8 @@ class AgentLoop:
                 reason = "runtime_failed"
                 break
 
-            if stop_reason in {"provider_failed", "runtime_failed"}:
-                reason = "provider_failed"
+            if stop_reason in {"provider_failed", "runtime_failed", "incomplete_tool_batch"}:
+                reason = stop_reason
                 break
 
             if stop_reason != "tool_use":
@@ -105,6 +105,7 @@ class AgentLoop:
             self._append_runtime_error("capability_mismatch", str(exc))
             return "runtime_failed"
         self._session.hooks.invoke("post_projection", session=self._session, request=request)
+        turn_start = self._session.log.size
         if not self._call_provider_with_retry(request):
             return "provider_failed"
 
@@ -112,7 +113,35 @@ class AgentLoop:
             (e for e in self._session.log.reverse_each() if e.type == "assistant_message"),
             None,
         )
-        return last_assistant.payload["stop_reason"] if last_assistant else "end_turn"
+        stop_reason = last_assistant.payload["stop_reason"] if last_assistant else "end_turn"
+        turn_events = list(self._session.log)[turn_start:]
+        if self._close_incomplete_tool_batch(turn_events, stop_reason):
+            return "incomplete_tool_batch"
+        return stop_reason
+
+    def _close_incomplete_tool_batch(self, turn_events: list[Event], stop_reason: str) -> bool:
+        tool_uses = [event for event in turn_events if event.type == "tool_use"]
+        if not tool_uses or stop_reason == "tool_use":
+            return False
+
+        for tool_use in tool_uses:
+            tool_use_id = str(tool_use.payload.get("id", ""))
+            name = str(tool_use.payload.get("name", ""))
+            self._session.log.append(
+                type="tool_result",
+                payload={
+                    "tool_use_id": tool_use_id,
+                    "output": None,
+                    "error": (
+                        f"tool {name} did not complete: assistant turn ended with "
+                        f"stop_reason {stop_reason} before a tool result was recorded"
+                    ),
+                    "error_class": "IncompleteToolResult",
+                    "reason": "incomplete_tool_result",
+                    "stop_reason": stop_reason,
+                },
+            )
+        return True
 
     def _call_provider_with_retry(self, request: dict[str, Any]) -> bool:
         attempt = 1

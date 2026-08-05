@@ -9,10 +9,14 @@ the specification as a whole.
 
 ## [Unreleased]
 
+- AgentLoop closes complete tool calls emitted under a non-tool stop reason
+  with canonical failure results, invokes zero tools, and returns
+  `incomplete_tool_batch`; 79/79 agent fixtures pass.
+
 ### Added
 
-- Raw provider-wire conformance for Anthropic, OpenAI, and Gemini: 18 logical
-  cases and 39 deterministic byte-fragmented executions through the
+- Raw provider-wire conformance for Anthropic, OpenAI, and Gemini: 19 logical
+  cases and 41 deterministic byte-fragmented executions through the
   production HTTP/SSE parsers, plus a standalone
   `bin/provider_wire_conformance.py` runner.
 - Added v0.20 durability primitives: harnas-jcs-v1 canonicalization,
@@ -24,8 +28,8 @@ the specification as a whole.
 ### Changed
 
 - Bumped package metadata, MCP client version, and `harnas.__version__` to
-  0.22.0. Validated against fixtures version `0.22.0`: 78/78 agent fixtures
-  plus 39/39 provider-wire executions.
+  0.22.0. Validated against fixtures version `0.22.0`: 79/79 agent fixtures
+  plus 41/41 provider-wire executions.
 - Built-in stream adapters now fail closed on provider error frames,
   malformed JSON or UTF-8, invalid tool lifecycles, and missing terminal
   evidence, without producing a durable result after failure.
