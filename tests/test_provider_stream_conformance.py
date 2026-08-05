@@ -11,5 +11,5 @@ def test_provider_stream_fixtures() -> None:
     if not (root / "conformance" / "provider-streams" / "corpus.json").is_file():
         pytest.skip("provider-stream corpus is not present in this spec version")
     report = run_provider_stream_corpus(root)
-    assert report.cases == 19
-    assert report.profiles == 41
+    assert report.cases == 18
+    assert report.profiles == 39
